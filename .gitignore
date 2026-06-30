@@ -1,0 +1,12 @@
+.DS_Store
+.env
+*.env
+*.pem
+*.key
+*.log
+__pycache__/
+node_modules/
+.venv/
+dist/
+build/
+.project-setup/

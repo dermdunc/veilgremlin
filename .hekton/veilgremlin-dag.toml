@@ -1,0 +1,158 @@
+# VeilGremlin build DAG — the machine source of truth for the task-DAG
+# orchestrator (agentic-control-tower's `dag` commands). Transcribed once from
+# docs/architecture/work-breakdown.md's table + compact DAG diagram; edit
+# THIS file if the plan changes, not the markdown (which stays the
+# human-readable narrative — re-run `dag gen-specs` after any edit here to
+# regenerate the corresponding engine-gateway-lab task specs).
+#
+# Wave-B tasks depend on BOTH T01 and T02, not just T02 (the work-breakdown
+# table's "Blocks on" column lists only the contract dependency, T02) --
+# agent-factory-plan.md's own rule is a WAVE gate ("dispatch all of Wave B in
+# one batch once T01+T02 merge"), so both are encoded here as depends_on.
+#
+# Engine choice for V1 (see engine-gateway-lab's Phase 15 decision): cloud-only.
+# claude-cli for build tasks; codex-cli for T11 (an independent reviewer, not
+# the same engine that wrote the code) -- matches routing-policy.yaml's own
+# code-review -> codex-cli default. privacy = vendor-allowed throughout:
+# VeilGremlin's own source isn't privacy-sensitive (see .hekton/project.yaml,
+# privacy_boundary: internal); vendor-allowed lets gateway-run.sh dispatch
+# unattended (no per-run confirmation prompt) -- human review happens at the
+# control-tower session review/close step instead.
+
+[orchestrator]
+gateway_run = "/Users/hekton/Development/hekton/labs/engine-gateway-lab/scripts/gateway-run.sh"
+repo = "/Users/hekton/Development/hekton/factory-output/veilgremlin"
+default_verify = "cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check && cargo test"
+default_privacy = "vendor-allowed"
+spec_dir = ".hekton/build-tasks"
+
+# --- Epic E1 — Foundation & supply chain (Wave A) ---------------------------
+
+[[task]]
+id = "T01"
+wave = "A"
+depends_on = []
+task_type = "code-implement"
+engine = "claude-cli"
+description = "Cargo workspace + crate skeletons; CI (fmt, clippy -D warnings, cargo-deny, cargo-audit, --locked); bench CI job; release skeleton (SBOM stub, signing stub)."
+acceptance = "cargo build green on empty crates; CI runs on PR; cargo-deny config present."
+context = ["docs/architecture/agent-factory-plan.md"]
+verify_command = "cargo build --locked && cargo fmt --check"
+
+[[task]]
+id = "T02"
+wave = "A"
+depends_on = []
+task_type = "code-implement"
+engine = "claude-cli"
+description = "Freeze shared types + library API in vg-core; define trait seams (Detector, Parser, VaultStore, PolicyEngine, AuditSink); write contract-conformance test stubs."
+acceptance = "interface-contracts.md v1 frozen; types compile; conformance test scaffold exists."
+context = ["docs/architecture/interface-contracts.md", "docs/architecture/agent-factory-plan.md"]
+
+# --- Epic E2 — Detection & masking primitives (Wave B, parallel) -----------
+
+[[task]]
+id = "T03"
+wave = "B"
+depends_on = ["T01", "T02"]
+task_type = "code-implement"
+engine = "claude-cli"
+description = "Deterministic detectors: compiled regex sets (email/phone/IP/IBAN/sort-code), Aho-Corasick dictionaries, entropy detector."
+acceptance = "unit tests per detector; bench p95 < 25 ms on reference input."
+context = ["docs/architecture/interface-contracts.md"]
+
+[[task]]
+id = "T04"
+wave = "B"
+depends_on = ["T01", "T02"]
+task_type = "code-implement"
+engine = "claude-cli"
+description = "Typed-placeholder + HMAC keying: canonicalisation, salted HMAC over (value,type,namespace), per-type ordinals, Luhn/mod-97 checksum validators, session cache."
+acceptance = "same value -> same placeholder within namespace; checksum tests pass."
+context = ["docs/architecture/interface-contracts.md"]
+
+[[task]]
+id = "T08"
+wave = "B"
+depends_on = ["T01", "T02"]
+task_type = "code-implement"
+engine = "claude-cli"
+description = "File-aware parsing: logs, git diffs, JSON/YAML, .env; tree-sitter for one source language; emit Span model to detectors."
+acceptance = "parser tests on fixtures; spans typed; error-tolerant on malformed input."
+context = ["docs/architecture/interface-contracts.md"]
+
+# --- Epic E3 — State, policy, evidence (Wave B, parallel) ------------------
+
+[[task]]
+id = "T05"
+wave = "B"
+depends_on = ["T01", "T02"]
+task_type = "code-implement"
+engine = "claude-cli"
+description = "SQLCipher vault: schema (mapping, demask_event), OS-keychain key wrap (macOS first), zeroize, TTL/purge, prepared-statement reuse."
+acceptance = "encrypted at rest; key never plaintext; lookup bench within budget; TTL purge works."
+context = ["docs/architecture/interface-contracts.md"]
+
+[[task]]
+id = "T05b"
+wave = "B"
+depends_on = ["T01", "T02"]
+task_type = "code-implement"
+engine = "claude-cli"
+description = "Audit sink: append-only structured events, redaction-safe (no raw values), versioned record types."
+acceptance = "events written; property test: no raw value ever serialised."
+context = ["docs/architecture/interface-contracts.md"]
+
+[[task]]
+id = "T06"
+wave = "B"
+depends_on = ["T01", "T02"]
+task_type = "code-implement"
+engine = "claude-cli"
+description = "Native policy engine: 3-layer load (global->repo->session), artefact/entity/destination/demask rules, signed-pack verification stub, policy check."
+acceptance = "example policy parses; layering resolves; deny rules enforced in tests."
+context = ["docs/architecture/interface-contracts.md"]
+
+# --- Epic E4 — Pipeline & integration (Wave C) ------------------------------
+
+[[task]]
+id = "T07"
+wave = "C"
+depends_on = ["T03", "T04", "T05", "T05b", "T06", "T08"]
+task_type = "code-implement"
+engine = "claude-cli"
+description = "Masking pipeline in vg-core: detectors -> policy -> vault -> masked pack; .env/block path; irreversible-redact path; placeholder-consistency validation."
+acceptance = "end-to-end mask on fixture; irreversible class never vault-stored; e2e bench."
+context = ["docs/architecture/interface-contracts.md"]
+
+[[task]]
+id = "T09"
+wave = "C"
+depends_on = ["T07"]
+task_type = "code-implement"
+engine = "claude-cli"
+description = "vg CLI + Claude Code adapter: run/inspect/diff --masked/demask/audit/policy/vault commands; hooks (UserPromptSubmit/PreToolUse/PostToolUse) + wrapper; Bedrock masked-request path; pre-send summary; explicit demask gate."
+acceptance = "masked round trip to Bedrock path; demask gate denies remote_model_prompt; CLI help complete."
+context = ["docs/architecture/interface-contracts.md"]
+
+# --- Epic E5 — Evaluation & gate (Wave D) -----------------------------------
+
+[[task]]
+id = "T10"
+wave = "D"
+depends_on = ["T09"]
+task_type = "code-implement"
+engine = "claude-cli"
+description = "Seeded corpus (labelled) + metrics harness (recall/FP/consistency/latency/zero-raw-PII); incident-log demo fixture; Go/No-Go report generator."
+acceptance = "report emits all Go/No-Go metrics; demo scenario runs; thresholds evaluated."
+context = ["docs/spec/requirements-and-design-spec.md"]
+
+[[task]]
+id = "T11"
+wave = "D"
+depends_on = ["T10"]
+task_type = "code-review"
+engine = "codex-cli"
+description = "Review + /security-review on the full diff (T01-T10); privacy + supply-chain criteria; sign-off. Deliberately a different engine than the one that wrote the code."
+acceptance = "review findings triaged; gates green; human approval recorded."
+context = ["docs/architecture/agent-factory-plan.md", "docs/spec/requirements-and-design-spec.md"]

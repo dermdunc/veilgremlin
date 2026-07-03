@@ -5,6 +5,13 @@ Repo source-of-truth for the work queue. Tasks T01–T11 are defined in [`archit
 ## Immediate (Wave A — foundation, must merge before parallel work)
 
 - [ ] **Confirm first push** to GitHub: `cd /Users/hekton/Development/hekton/factory-output/veilgremlin && git push -u origin main` (see note in session-log re: SSH key — coderturtle key is currently registered to dermdunc; HTTPS+gh token works)
+- [ ] **Human decision: dispatch T01 + T02 for real** through the new task-DAG orchestrator —
+      `control-tower --root . dag dispatch T01` and `dag dispatch T02` (both show `ready` in
+      `dag status`). The DAG (`.hekton/veilgremlin-dag.toml`) and generated specs
+      (`.hekton/build-tasks/T01.md`, `T02.md`) are already in place and validated; this repo's own
+      `.control-tower/` workspace is initialized. See `docs/decisions.md` (2026-07-03) and
+      `agentic-control-tower`'s root `decisions.md` ADR-013 for the full mechanism. Not dispatched
+      automatically this session — deliberately left for explicit human go-ahead.
 - [ ] **T01** — Cargo workspace + crate skeletons + CI (`fmt`, `clippy -D warnings`, `cargo-deny`, `cargo-audit`, `--locked`) + bench/release skeleton — *Squad X*
 - [ ] **T02** — Freeze shared types + library API in `vg-core`; finalise `architecture/interface-contracts.md` v1 — *Squad 0*
 

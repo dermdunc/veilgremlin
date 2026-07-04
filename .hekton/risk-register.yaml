@@ -9,7 +9,7 @@ risks:
     likelihood: medium
     impact: medium
     status: open
-    owner: coderturtle
+    owner: dermdunc
     mitigation: "Run governance preflight and end-session review during first material session."
     raised_date: 2026-06-30
     reviewed_date: 2026-06-30

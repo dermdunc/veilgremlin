@@ -1,5 +1,68 @@
 # Session Log: VeilGremlin
 
+## 2026-07-04 - Repo ownership moved to dermdunc (public); build dispatch still deferred
+
+Reviewed readiness to dispatch T01/T02 for real through `agentic-control-tower`'s task-DAG
+orchestrator. Confirmed the DAG (`dag status`) shows both ready and the earlier GitHub-push
+blocker was already resolved (an SSH host-alias fix, not just the HTTPS workaround). Found a new
+blocker — no Rust toolchain on this machine — and, separately, coderturtle decided to hold off
+starting real VeilGremlin build work until the wider Hekton factory-readiness pass is further
+along. No build code was written and nothing was dispatched this session.
+
+Separately, coderturtle determined VeilGremlin's GitHub account was wrong: it's an enterprise
+architecture/governance/risk tool, not agentic-engineering tooling, so it belongs under
+`dermdunc` (public), not `coderturtle` (private). Executed that move end-to-end.
+
+### Changed / created files
+
+- `.hekton/project.yaml`, `.hekton/governance.yaml`, `.hekton/risk-register.yaml` — owner,
+  `github_account`, `github_remote_url`, `privacy_boundary` updated to dermdunc/public.
+- `.hekton/change-log.yaml`, `.hekton/agent-run-log.yaml` — CHG-0002 / RUN-0002 entries for this move.
+- `mind-palace/.../index.md` — owner/privacy_boundary updated to match.
+- `README.md`, `CLAUDE.md`, `AGENTS.md`, `CODEX.md`, `docs/spec/requirements-and-design-spec.md` —
+  `Owner:`/`Privacy boundary:` headers updated to dermdunc/public.
+- `docs/decisions.md` — new ADR row + full entry recording the ownership/visibility move.
+- `docs/next-actions.md` — GitHub-push item confirmed resolved; Rust-toolchain gap logged;
+  T01/T02 dispatch re-deferred with reason; visibility-flip and SSH-key items closed as
+  decided/superseded.
+- `docs/risks.md` — RISK-0010 closed as moot (repo no longer pushes as coderturtle at all).
+- `docs/project-walkthrough.md` — dated update entry + open-question line resolved.
+
+### Decisions Made
+
+- Dispatch T01/T02 deliberately deferred again — not a technical blocker this time, a human call
+  to wait for the wider Hekton readiness pass. The newly-found Rust-toolchain gap is logged but
+  intentionally not fixed yet (no point installing a toolchain for a build that isn't starting today).
+- GitHub repo transferred `coderturtle/veilgremlin` → `dermdunc/veilgremlin` and made public in
+  the same session, ahead of any real code existing — the safer order (nothing sensitive to leak
+  by going public early, given zero implementation exists yet).
+
+### Assumptions
+
+- `dermdunc` is the correct long-term public identity for enterprise architecture/governance/risk
+  factory-output projects, per the new Hekton-wide routing guidance this session also added to
+  `~/hekton/config/github-accounts.yaml`.
+
+### Risks / issues
+
+- Repo is now public with zero implementation — low risk (nothing to leak yet), but any future
+  session should assume anything committed from this point is world-readable immediately.
+- No Rust toolchain installed — will block the very first dispatch (`T01`'s verify command needs
+  `cargo`) whenever the deferred build session actually starts.
+
+### Next Actions
+
+- See `docs/next-actions.md` — Rust toolchain install + `check-prereqs.sh` update, then T01/T02
+  dispatch, whenever the human decides the wider Hekton readiness pass is far enough along.
+
+### Validation status
+
+- `scripts/verify-project.sh` — passed (all required files present).
+- `git ls-remote origin` and `gh api repos/dermdunc/veilgremlin` both confirmed the transfer +
+  public visibility took effect.
+- Mind-palace: repo-local mirror updated to match; live vault sync run via
+  `scripts/sync-mirror-to-vault.sh` this same session (see commit in the vault repo).
+
 ## 2026-06-30 - Design & scaffold (factory-output)
 
 Scaffolded VeilGremlin as a Hekton **factory-output** project and loaded it with the full Phase 0/1 design plus an agent-factory build plan. No implementation code yet (Hekton rule: stop before building unless asked).

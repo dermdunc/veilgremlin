@@ -15,6 +15,9 @@ AI coding agents pull in far more than a chat prompt: files, diffs, terminal out
 ## What we have built so far
 
 - **2026-06-30** — Project scaffolded as a Hekton **factory-output** repo under the **coderturtle** GitHub account (private).
+- **2026-07-04** — Repo ownership moved to **dermdunc** and made **public** — VeilGremlin is an
+  enterprise architecture/governance/risk tool, not agentic-engineering tooling, so it belongs
+  under the professional-identity account per Hekton's new domain-based GitHub routing decision.
 - Authored the full **requirements & design specification** (`docs/spec/`), covering Phase 0 (discovery) and Phase 1 (laptop MVP): threat model, taxonomy, hot/warm/cold path design, token vault, policy-as-code, supply-chain model, six architecture diagrams, and Go/No-Go criteria.
 - Authored the **agent factory build plan** (`docs/architecture/`): how teams of agents build this — squad-per-crate ownership, a contract-first method, the four build waves, the task DAG (T01–T11), and the frozen interface contracts that let squads work in parallel without colliding.
 - Brought the source **deep research report** into the repo (`docs/research/`).
@@ -43,7 +46,8 @@ Design: high (grounded in the research report and an explicit Go/No-Go bar). Imp
 ## Open questions
 
 - Multilingual entity coverage; quasi-identifier leakage; screenshot OCR boundary; graph-based context preservation; exact Cedar/OPA choice for enterprise policy; repo- vs session-scoped placeholder stability default. (See spec § Open Questions.)
-- Repo visibility: stay private vs open-source publicly under coderturtle, and when.
+- ~~Repo visibility: stay private vs open-source publicly under coderturtle, and when.~~ —
+  decided 2026-07-04: public, under dermdunc (see decisions log).
 
 ## Next recommended session
 

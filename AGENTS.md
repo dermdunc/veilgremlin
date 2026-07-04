@@ -6,7 +6,7 @@
 - **Local repo:** /Users/hekton/Development/hekton/factory-output/veilgremlin
 - **Vault:** /Users/hekton/vaults/hekton-mind-palace/20-projects/factory-output/veilgremlin
 - **Vault mutation allowed:** false
-- **Owner:** coderturtle
+- **Owner:** dermdunc
 
 ## Shared Agent Rules
 

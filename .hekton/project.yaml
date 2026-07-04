@@ -5,12 +5,12 @@ status: active
 lifecycle_stage: active
 local_repo_path: /Users/hekton/Development/hekton/factory-output/veilgremlin
 mind_palace_path: 20-projects/factory-output/veilgremlin
-owner: coderturtle
+owner: dermdunc
 created_date: 2026-06-30
 promotion_target: none
-privacy_boundary: internal
-github_account: coderturtle
-github_remote_url: "git@github.com-coderturtle:coderturtle/veilgremlin.git"
+privacy_boundary: public
+github_account: dermdunc
+github_remote_url: "git@github.com:dermdunc/veilgremlin.git"
 vault_mutation_allowed: false
 # version: applies to platform components (alpha|beta|v1.0|v1.x|v2.0) and factory outputs (v0|beta|v1.0|v1.x)
 # Labs do not carry version numbers. Set by the Promotion Agent on first promotion; human confirms.
@@ -64,7 +64,7 @@ architecture:
     - ".hekton/veilgremlin-dag.toml (the 11-task build DAG, transcribed from docs/architecture/work-breakdown.md)"
     - "dag load/gen-specs correctly registered and rendered all 12 tasks; dag status/next correctly show only Wave A (T01/T02) as ready"
   risks: []
-  owner: coderturtle
+  owner: dermdunc
 notes:
   - Local-first privacy shield that keeps real PII and sensitive enterprise identifiers out of model context in agentic coding workflows.
 

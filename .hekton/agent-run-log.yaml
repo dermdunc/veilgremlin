@@ -25,3 +25,35 @@ agent_runs:
       - "Governance records need review during first material session."
     next_actions:
       - "Run governance preflight before implementation."
+  - id: RUN-0002
+    date: 2026-07-04
+    agent: "claude (interactive session)"
+    role: "Build Agent"
+    intent: "Move VeilGremlin's GitHub repo from coderturtle (private) to dermdunc (public) per the human's domain-based routing call, and update all current-state metadata to match."
+    autonomy_level: 3
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    files_touched:
+      - ".hekton/project.yaml"
+      - ".hekton/governance.yaml"
+      - ".hekton/risk-register.yaml"
+      - ".hekton/change-log.yaml"
+      - "mind-palace/20-projects/factory-output/veilgremlin/index.md"
+      - "README.md"
+      - "CLAUDE.md"
+      - "AGENTS.md"
+      - "CODEX.md"
+      - "docs/spec/requirements-and-design-spec.md"
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/risks.md"
+      - "docs/project-walkthrough.md"
+    validation:
+      - "gh api repos/dermdunc/veilgremlin confirmed owner=dermdunc, visibility=public"
+      - "git ls-remote origin confirmed reachable after remote URL update"
+    risks:
+      - "Repo is now public before any real code exists to review — mitigated by doing this move before Wave A build work starts, not after."
+    next_actions:
+      - "None outstanding for this move; T01/T02 dispatch remains separately deferred (docs/next-actions.md)."

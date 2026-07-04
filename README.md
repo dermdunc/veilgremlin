@@ -1,6 +1,6 @@
 # VeilGremlin
 
-**Classification:** factory-output (Hekton) · **Owner:** coderturtle · **Status:** design + scaffold (Phase 0 → Phase 1)
+**Classification:** factory-output (Hekton) · **Owner:** dermdunc · **Status:** design + scaffold (Phase 0 → Phase 1)
 
 > A **local-first privacy shield for agentic engineering.** It keeps real PII and sensitive enterprise identifiers out of model context when developers use vibe-coding / agentic tools (Claude Code, Codex, Cursor, Continue, Cline, …). Masking is automatic and local; demasking is explicit, local, policy-gated, and auditable. The cloud model only ever sees placeholders.
 

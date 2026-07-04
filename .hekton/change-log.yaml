@@ -17,3 +17,21 @@ changes:
       status: not_required
     links:
       - "docs/session-log.md"
+  - id: CHG-0002
+    date: 2026-07-04
+    title: "Repo ownership moved to dermdunc; visibility flipped to public"
+    intent: "Route VeilGremlin under the correct GitHub account per its enterprise architecture/governance/risk domain, not the default factory-output coderturtle routing."
+    changed_by: "human + claude (interactive session)"
+    change_type: config
+    risk_level: medium
+    validation:
+      - "gh api repos/dermdunc/veilgremlin confirmed owner=dermdunc, visibility=public"
+      - "git ls-remote origin confirmed reachable after remote URL update"
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    links:
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/risks.md"

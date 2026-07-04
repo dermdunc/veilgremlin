@@ -1,7 +1,7 @@
 # VeilGremlin Requirements and Design Specification
 
 **Project:** VeilGremlin — local-first privacy shield for agentic engineering
-**Owner:** coderturtle · **Architect:** The Agentic Tekton
+**Owner:** dermdunc · **Architect:** The Agentic Tekton
 **Status:** Phase 0 → Phase 1 design · **Date:** 2026-06-30
 **Document scope:** Phase 0 (Discovery) and Phase 1 (Laptop-first MVP)
 

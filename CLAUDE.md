@@ -9,8 +9,8 @@
 - **Vault control plane:** /Users/hekton/vaults/hekton-mind-palace/20-projects/factory-output/veilgremlin
 - **Lifecycle stage:** active
 - **Promotion target:** none
-- **Privacy boundary:** internal
-- **Owner:** coderturtle
+- **Privacy boundary:** public
+- **Owner:** dermdunc
 - **Vault mutation allowed:** false
 
 ## Agent Rules

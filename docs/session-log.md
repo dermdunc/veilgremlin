@@ -107,3 +107,55 @@ Scaffolded VeilGremlin as a Hekton **factory-output** project and loaded it with
 
 - `just validate-taxonomy` not yet run this session — recommend running before/after first push.
 - Mind-palace: vault card + session-log created by scaffold; repo is source of truth (boundary rule). Vault mutation not performed beyond scaffold output (`vault_mutation_allowed: false`).
+
+---
+
+## Session: GO-LIVE dispatch (real) + T01 built directly
+
+**Date:** 2026-07-14
+
+### What Changed
+
+Real `dag dispatch T01` run through `agentic-control-tower` + `engine-gateway-lab` — the
+factory's first end-to-end build event. The dispatch mechanism worked correctly (worktree
+isolation, routing, verify gate), but the nested `claude -p --permission-mode acceptEdits`
+headless call stalled on a Bash-command permission prompt with no human to approve it, and
+returned a "waiting on your approval" message instead of building anything — verify correctly
+failed on the missing `Cargo.toml`. Built T01 directly instead of retrying the nested dispatch:
+a 9-crate Cargo workspace (`vg-core`, `vg-detectors`, `vg-parsers`, `vg-vault`, `vg-policy`,
+`vg-audit`, `vg-cli`, `vg-adapters-claude`, `vg-bench`), `.github/workflows/ci.yml`, `deny.toml`,
+and a release skeleton (SBOM/signing stubbed).
+
+### Decisions
+
+See `docs/decisions.md` (2026-07-14 entry) for the full record: why direct build over retrying
+with a looser permission mode, the cargo-deny wildcard-dependency fix, and the flagged
+unattended-dispatch gap for `engine-gateway-lab`/`agentic-control-tower`.
+
+### Assumptions
+
+Empty skeleton crates are correct for T01 — `interface-contracts.md` names Squad 0/Task T02 as
+the owner of the canonical trait/type definitions, so T01's job is the workspace + CI they land
+in, not the types themselves.
+
+### Risks
+
+The dispatch-mechanism gap (headless `-p` mode cannot approve a Bash tool call) will recur for
+any future task whose agent tries to run a Bash command mid-task — flagged in
+`docs/next-actions.md`, not fixed here (out of scope for a VeilGremlin build task).
+
+### Next Actions
+
+- T02 next (freeze `vg-core` shared types + `interface-contracts.md` v1). Wave B does not
+  dispatch until T01 and T02 both merge.
+- Review/merge the T01 PR (`gateway/run-20260714-T01` → `main`).
+- Flag the unattended-dispatch permission-mode gap to `engine-gateway-lab`/
+  `agentic-control-tower` (separate repos, not addressed here).
+
+### Validation status
+
+- `cargo build --locked && cargo fmt --check` (the DAG's own verify command): PASS.
+- `cargo clippy --workspace --all-targets --locked -- -D warnings`: PASS.
+- `cargo deny check`: PASS (advisories/bans/licenses/sources all ok).
+- `cargo audit`: PASS (0 vulnerabilities, 76 dependencies scanned).
+- `cargo bench --workspace --locked --no-run`: compiles clean.

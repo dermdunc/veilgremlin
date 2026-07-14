@@ -1,0 +1,13 @@
+[package]
+name = "vg-policy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "3-layer (session/repo/global) policy engine implementing vg-core::PolicyEngine."
+
+[lints]
+workspace = true
+
+[dependencies]
+vg-core = { path = "../vg-core", version = "0.1.0" }

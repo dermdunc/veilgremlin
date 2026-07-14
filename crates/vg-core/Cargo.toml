@@ -1,0 +1,12 @@
+[package]
+name = "vg-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "VeilGremlin shared types and library API (scan/mask/rehydrate/benchmark)."
+
+[lints]
+workspace = true
+
+[dependencies]

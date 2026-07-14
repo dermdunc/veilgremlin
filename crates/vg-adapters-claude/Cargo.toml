@@ -1,0 +1,13 @@
+[package]
+name = "vg-adapters-claude"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Claude Code hook adapter (UserPromptSubmit/PreToolUse/PostToolUse) + the vg run -- claude wrapper."
+
+[lints]
+workspace = true
+
+[dependencies]
+vg-core = { path = "../vg-core", version = "0.1.0" }

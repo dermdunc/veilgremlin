@@ -1,0 +1,13 @@
+[package]
+name = "vg-detectors"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Deterministic, allocation-aware hot-path detectors implementing vg-core::Detector."
+
+[lints]
+workspace = true
+
+[dependencies]
+vg-core = { path = "../vg-core", version = "0.1.0" }

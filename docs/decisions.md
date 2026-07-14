@@ -67,3 +67,174 @@ GitHub routing.
 - Future factory-output projects should get the coderturtle-vs-dermdunc domain call made
   explicitly at scaffold time, per the new Hekton-wide routing guidance, rather than needing a
   post-hoc move like this one.
+
+## 2026-07-14 - GO-LIVE dispatch (real) and T01 built directly after a dispatch-mechanism gap
+
+### Context
+
+The "no Rust toolchain" blocker (2026-07-04, above) was re-checked this session against
+`agentic-control-tower/docs/go-live-dependencies.md`, which had already found the toolchain
+installed on 2026-07-07 (re-checked 2026-07-13) — the local claim was stale. Independently
+re-verified: `cargo`/`rustc`/`cargo-audit` were already present via Homebrew; only `cargo-deny`
+was missing, installed this session. With the toolchain question resolved, the human authorized
+the real GO-LIVE dispatch: `dag dispatch T01` through `agentic-control-tower` +
+`engine-gateway-lab`.
+
+### What happened
+
+The dispatch mechanism itself worked correctly end to end: DAG state transition, worktree
+isolation (`engine-gateway-lab/.worktrees/run-20260714-T01`, branch
+`gateway/run-20260714-T01`), routing to `claude-cli`, and the verify gate all fired as designed.
+But the nested `claude -p --output-format json --permission-mode acceptEdits` headless call
+tried to run a Bash command (checking whether the Rust toolchain was actually installed — the
+same stale claim this session had just corrected) and stalled on a tool-use permission prompt
+with no human present to approve it in a one-shot `-p` invocation. Rather than erroring, it
+returned "The tool is waiting on your approval for this command..." as its final result. The
+gateway adapter treated this as a normal completion (no error, non-empty result text), wrote it
+to `.hekton/build-tasks/T01-output.md`, and the DAG's verify step correctly failed on the
+missing `Cargo.toml` — but nothing had actually been built, and the run's own timestamps
+(dispatch and verify within the same second) confirm no real work occurred.
+
+### Decision
+
+Given three options (retry with `bypassPermissions`, block the run and stop, or build T01
+directly), the human chose to build T01 directly in the existing worktree rather than debug or
+loosen the nested dispatch's permission mode — the toolchain question was already settled, and
+building it directly avoided disabling the nested agent's own confirmation safety net just to
+work around a one-off stale-data trip-up. Built: a 9-crate Cargo workspace (`vg-core`,
+`vg-detectors`, `vg-parsers`, `vg-vault`, `vg-policy`, `vg-audit`, `vg-cli`,
+`vg-adapters-claude`, `vg-bench` — matching `agent-factory-plan.md`'s squad-to-crate mapping),
+empty skeleton crates per `interface-contracts.md`'s note that Squad 0/Task T02 owns the
+canonical trait and type definitions, `.github/workflows/ci.yml` (fmt, clippy -D warnings,
+cargo-deny, cargo-audit, build --locked, bench compile-check), `deny.toml`, and a release
+skeleton (`release/README.md`) with SBOM/signing explicitly stubbed, not silently omitted.
+
+Verified locally before committing: the DAG's own verify command
+(`cargo build --locked && cargo fmt --check`) passes; also `cargo clippy --workspace
+--all-targets --locked -- -D warnings`, `cargo deny check`, and `cargo audit` all pass;
+`cargo bench --workspace --locked --no-run` compiles. One real fix needed along the way:
+`cargo-deny`'s bans check flags intra-workspace `path` dependencies with no `version` as
+wildcard dependencies — added `version = "0.1.0"` alongside every `path = "../vg-*"` dependency
+to satisfy it, a standard pattern, not a workaround.
+
+### Consequences
+
+- This is VeilGremlin's actual first line of code and the factory's first real end-to-end build
+  through the DAG orchestrator → engine-gateway → adapter chain — the evidence both
+  `agentic-control-tower` and `engine-gateway-lab` need for their own Transformer/platform
+  promotions.
+- The unattended-dispatch gap (headless `-p` mode cannot approve a Bash tool call) is real and
+  not VeilGremlin-specific — flagged in `docs/next-actions.md` for `engine-gateway-lab`/
+  `agentic-control-tower` to pick up; not fixed here, since fixing the dispatch mechanism itself
+  is out of scope for a VeilGremlin build task.
+- T02 (freeze `vg-core`'s shared types) is next; per `agent-factory-plan.md`, Wave B does not
+  dispatch until T01 **and** T02 both merge.
+
+## 2026-07-14 - Doubt-driven-development on the T01 PR: CI was actually red, docs overclaimed
+
+### Context
+
+Before merging the T01 PR (#2), ran a fresh-context adversarial review against the actual task
+spec, `interface-contracts.md`, and `agent-factory-plan.md`, with instructions to independently
+verify every claim rather than trust the text — including by reading the real GitHub Actions
+run, not just the local terminal output this session had already captured.
+
+### Findings and disposition
+
+- **Confirmed, fixed:** the `deny` job in `.github/workflows/ci.yml` was `runs-on: macos-latest`.
+  `EmbarkStudios/cargo-deny-action@v2` is a Docker container action — container actions only run
+  on Linux-hosted GitHub runners. The actual PR's CI run failed on this job on every push
+  ("Container action is only supported on Linux"), while every doc this session wrote —
+  including the entry above, `docs/session-log.md`, and the PR body — claimed "cargo deny check:
+  PASS." That claim was true for the local Homebrew binary, a different execution path from the
+  Docker-based CI job; nobody had checked the real CI run before writing "PASS." Fixed:
+  `runs-on: ubuntu-latest` for that job only.
+- **Confirmed, fixed:** this project is explicitly bound to `~/hekton`'s Hekton Documentation
+  Contract (`CLAUDE.md:18`), which requires `.hekton/agent-run-log.yaml` and
+  `.hekton/change-log.yaml` updated every session with a structural/build change — T01 is exactly
+  that kind of change (a from-scratch build engine), and neither file was touched. Added
+  `RUN-0003`/`CHG-0003`.
+- **Confirmed, fixed:** `docs/project-walkthrough.md` still read "No Rust code yet... session is
+  design and scaffolding only" and "Implementation: not started" after T01's real code existed —
+  the Plain-English Walkthrough Contract requires this file stay current and a dated entry land
+  under `docs/walkthroughs/` after a meaningful build session. Updated the walkthrough file and
+  added `docs/walkthroughs/2026-07-14-t01-workspace-scaffold.md`.
+- **Confirmed, not fixed (flagged instead):** the branch (`gateway/run-20260714-T01`, the ACT/
+  engine-gateway dispatch tooling's own naming convention) doesn't match
+  `agent-factory-plan.md`'s documented `feat/<squad>-<task-id>-<slug>` convention. Not renamed —
+  the branch is already pushed with an open PR, and renaming it costs more (force-push, PR
+  re-target) than the mismatch itself does. Recorded as a real, unreconciled gap between two
+  repos' git conventions for a future session to resolve, not silently accepted.
+- **Verified genuinely correct** (reviewer ran the actual commands, not just read the code): the
+  9-crate layout matches the squad ownership table exactly; `[lints] workspace = true` is present
+  in every crate and clippy's `-D warnings` genuinely passes with zero suppressions; the `vg`
+  binary name and `vg-bench`'s criterion wiring are both correct; no crate is missing.
+
+### Why this matters
+
+This is the second time this session that an independent, fresh-context check (first the lab-
+readiness eval's own doubt-driven-development pass, now this one) caught a claim of "all pass"
+that wasn't true for the environment that actually matters, not the one that was convenient to
+check locally. The pattern is the same both times: verify against the real target (a live
+GitHub Actions run here; a 0-byte YAML file there), not against what ran cleanly on this one
+machine.
+
+## 2026-07-14 - Doubt-driven-development round 2 (Codex cross-model): six more findings, fixed
+
+### Context
+
+After round 1's fix was independently confirmed (real GitHub Actions run green, all 6 jobs
+passing), ran a second, cross-model review (Codex, `codex exec --sandbox read-only`) against the
+same T01 PR, seeded with round 1's findings and instructed to focus on what round 1 might have
+missed rather than re-confirm it.
+
+### Findings and disposition
+
+- **Confirmed, fixed:** no `cargo test` CI job existed. T01 itself has no logic to test, but the
+  job should exist now so T02 onward's first real tests are gated in CI from day one rather than
+  retrofitted later. Added a `test` job to `.github/workflows/ci.yml`.
+- **Confirmed, fixed:** the Rust toolchain was unpinned — every CI job used
+  `dtolnay/rust-toolchain@stable` (a floating channel, not a pinned version), and no
+  `rust-toolchain.toml` existed, contradicting this project's own reproducibility standard
+  ("documented → scripted → idempotent-ish → logged → reproducible on a blank machine"). Added
+  `rust-toolchain.toml` (channel `1.96.1`, matching this machine's installed toolchain) and
+  pinned every CI job's `dtolnay/rust-toolchain` ref to the same version.
+- **Confirmed, fixed:** `docs/risks.md`'s RISK-0002 mitigation read as if bench-based p95 gating
+  were already enforced in CI. It isn't — there's no hot-path code yet to benchmark; only the
+  harness compiles. Added a status-update note to the mitigation cell rather than rewriting the
+  aspirational target, which is still correct for later tasks.
+- **Confirmed, fixed — and the most on-the-nose finding of the whole session:**
+  `scripts/check-prereqs.sh`, `docs/local-assumptions.md`, and `scripts/verify-project.sh` still
+  didn't check for the Rust toolchain at all, meaning they'd pass clean on a machine with no
+  Cargo whatsoever — the *exact* gap flagged in `docs/next-actions.md` on 2026-07-04
+  ("`check-prereqs.sh` doesn't check for it either... needs: Rust toolchain... and
+  `check-prereqs.sh` updated to check for all three so this doesn't get silently rediscovered
+  again") and prepared as an unapplied diff in `~/hekton`'s VeilGremlin dogfood runbook earlier
+  this same session — but never actually applied to this repo until this fix. Applied now, to
+  all three files, plus made `verify-project.sh` actually run `cargo build --locked && cargo fmt
+  --check` rather than only check file presence.
+- **Confirmed, fixed:** every crate hardcoded `version = "0.1.0"` on its intra-workspace `path`
+  dependencies (added in round 1 to satisfy `cargo-deny`'s wildcard-dependency check). This
+  works today but would silently drift from `[workspace.package].version` on the next bump —
+  8 places to remember to update by hand. Refactored to the idiomatic Cargo pattern:
+  `[workspace.dependencies]` declares each `vg-*` crate once (path + version), and every
+  consuming crate uses `{ workspace = true }`. A version bump now only touches two places
+  (`workspace.package.version` and `workspace.dependencies`), not every crate.
+- **Confirmed, fixed — ironic given the whole exercise:** round 1's own fix to
+  `docs/project-walkthrough.md` (correcting the stale "No Rust code yet" claim) introduced a new
+  overclaim: "T01 workspace/CI merged 2026-07-14" and "T01 is merged" — the PR was (and still
+  is, pending human review) open, not merged. Fixed to "built... PR open — not yet merged."
+  Same overclaim did not appear in the dedicated walkthrough doc, only in the updated
+  `project-walkthrough.md` sections. Also corrected `README.md`'s stale "Next: Wave A" status
+  line (still described T01 as not-yet-started) and `docs/session-log.md`'s unqualified `cargo
+  deny check: PASS` line (now notes it was local-only and wrong for the real CI run).
+
+### Why this matters
+
+Two real lessons, not one: first, the same "verify the real target, not the convenient one"
+lesson as round 1 (the check-prereqs.sh gap in particular — a fix sitting *written and ready* in
+a different repo's runbook for hours before actually being applied here, because nobody closed
+that loop until an adversarial review asked "does this script still lie about what's required?").
+Second, a fix session can introduce its own overclaim while correcting someone else's — the
+"T01 is merged" line proves that doubt-driven-development needs to re-examine its own prior
+output, not just the original artifact, on each cycle.

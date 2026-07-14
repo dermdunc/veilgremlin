@@ -16,26 +16,49 @@ Repo source-of-truth for the work queue. Tasks T01–T11 are defined in [`archit
       `.hekton/risk-register.yaml`, the repo-local mind-palace mirror, and the `Owner:`/`Privacy
       boundary:` headers in `README.md`/`CLAUDE.md`/`AGENTS.md`/`CODEX.md`/`docs/spec/...` all
       updated to match. See `docs/decisions.md` for the full record.
-- [ ] **New blocker found 2026-07-04: no Rust toolchain on this machine.** `cargo`/`rustc` not
-      found (checked `~/.cargo/bin`, `rustup`, and Homebrew — `rust` formula available but not
-      installed). T01's own verify command is `cargo build --locked && cargo fmt --check`, so
-      dispatch will fail immediately until this is fixed. `scripts/check-prereqs.sh` doesn't check
-      for it either (still the generic scaffold default: git/bash/sed/date/mkdir/printf only).
-      Needs: Rust toolchain (brew or rustup) + `cargo-deny` + `cargo-audit`, and
-      `check-prereqs.sh` updated to check for all three so this doesn't get silently rediscovered
-      again.
-- [ ] **Human decision: dispatch T01 + T02 for real** through the new task-DAG orchestrator —
-      `control-tower --root . dag dispatch T01` and `dag dispatch T02` (both show `ready` in
-      `dag status`, confirmed 2026-07-04). The DAG (`.hekton/veilgremlin-dag.toml`) and generated
-      specs (`.hekton/build-tasks/T01.md`, `T02.md`) are already in place and validated; this
-      repo's own `.control-tower/` workspace is initialized. See `docs/decisions.md` (2026-07-03)
-      and `agentic-control-tower`'s root `decisions.md` ADR-013 for the full mechanism.
-      **Deliberately deferred again 2026-07-04**: coderturtle wants to hold off starting real
-      VeilGremlin build work until the wider Hekton factory-readiness pass (see `~/hekton`'s
-      2026-07-04 decision accepting the 8-layer OS model) is further along, not just T01/T02's own
-      prerequisites. Resolve the Rust toolchain gap above whenever that build session actually
-      starts, not before.
-- [ ] **T01** — Cargo workspace + crate skeletons + CI (`fmt`, `clippy -D warnings`, `cargo-deny`, `cargo-audit`, `--locked`) + bench/release skeleton — *Squad X*
+- [x] **Corrected 2026-07-14: the "no Rust toolchain" blocker above was stale.** Re-checked
+      against `agentic-control-tower/docs/go-live-dependencies.md` (which had already found the
+      toolchain installed on 2026-07-07) and independently re-verified: `cargo`/`rustc` were
+      already present via Homebrew. Only `cargo-deny` was actually missing — installed this
+      session (`brew install cargo-deny`). `check-prereqs.sh` still needs the prereq-check
+      update named below; not applied this session (prepared as a reviewed diff in
+      `~/hekton`'s `docs/plans/veilgremlin-v1-dogfood-runbook-v1.md`).
+- [x] **GO-LIVE dispatch, real, 2026-07-14.** `dag dispatch T01` ran for real through
+      `agentic-control-tower` + `engine-gateway-lab` — the factory's first real end-to-end
+      build event. **Finding:** the nested `claude -p --permission-mode acceptEdits` headless
+      call stalled on a Bash-command permission prompt (checking for the Rust toolchain — the
+      very blocker just corrected above) with no human to approve it, and returned a
+      "waiting on your approval" message as its final answer instead of erroring — `dag status`
+      showed `in-progress` with a clean exit and nothing built. This is a real unattended-dispatch
+      gap (headless `-p` mode has no path to approve a Bash tool call), not a VeilGremlin-specific
+      bug — worth flagging to `engine-gateway-lab`/`agentic-control-tower` for their own
+      unattended-loop work. **Resolution this session:** built T01 directly instead of retrying
+      the nested dispatch (human decision, given the toolchain question was already answered) —
+      see the T01 entry below.
+- [x] **T01 — done, 2026-07-14.** Cargo workspace (9 crates: `vg-core`, `vg-detectors`,
+      `vg-parsers`, `vg-vault`, `vg-policy`, `vg-audit`, `vg-cli`, `vg-adapters-claude`,
+      `vg-bench`) + CI (`.github/workflows/ci.yml`: fmt, clippy -D warnings, cargo-deny,
+      cargo-audit, build --locked, bench compile-check) + `deny.toml` + release skeleton
+      (`release/README.md`, SBOM/signing stubs). Crates are empty skeletons per
+      `interface-contracts.md`'s note that Squad 0 (T02) owns the canonical trait/type
+      definitions — this task scaffolds the workspace they'll land in. Verified locally:
+      `cargo build --locked && cargo fmt --check` (the DAG's own verify command) passes;
+      also `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo deny check`,
+      and `cargo audit` all pass; `cargo bench --workspace --locked --no-run` compiles. PR
+      opened against `main` from `gateway/run-20260714-T01`.
+- [x] **Two rounds of doubt-driven-development on the T01 PR — done, 2026-07-14.** Round 1
+      (single-model): found the `deny` CI job was actually failing on the real GitHub Actions
+      run (`macos-latest` + a Docker container action); fixed, re-verified the real run is now
+      green (all 6 jobs pass). Round 2 (Codex cross-model): found no `cargo test` CI job, an
+      unpinned Rust toolchain, a stale bench-gating claim in `docs/risks.md`, stale
+      reproducibility scripts (`check-prereqs.sh`/`local-assumptions.md`/`verify-project.sh`
+      didn't check for the Rust toolchain at all — the exact same gap flagged back on
+      2026-07-04 and never actually applied until now), hardcoded intra-workspace dependency
+      versions that would drift on a workspace version bump, and — ironically — a "T01 is
+      merged" overclaim introduced by round 1's own project-walkthrough.md fix (the PR isn't
+      merged yet). All fixed; see `docs/decisions.md` for the full record.
+- [ ] **Human: review and merge the T01 PR** (github.com/dermdunc/veilgremlin/pull/2) — CI is
+      green; two doubt-driven-development passes have run against it.
 - [ ] **T02** — Freeze shared types + library API in `vg-core`; finalise `architecture/interface-contracts.md` v1 — *Squad 0*
 
 ## This Week (Wave B — dispatch in parallel once T01+T02 merge)

@@ -37,7 +37,9 @@ vg audit last
 ## Status
 
 - **Done:** Phase 0/1 design, agent-factory build plan, repo scaffold (Hekton factory-output).
-- **Next:** Wave A — Cargo workspace + CI (T01), freeze interface contracts (T02). Then parallel Wave B squads.
+- **T01 (Cargo workspace + CI + supply-chain skeleton):** built 2026-07-14, PR open
+  (github.com/dermdunc/veilgremlin/pull/2), not yet merged.
+- **Next:** merge T01, then freeze interface contracts (T02). Once T01 + T02 both merge, batch-dispatch Wave B squads.
 
 ## Project conventions
 

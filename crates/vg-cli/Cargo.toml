@@ -1,0 +1,18 @@
+[package]
+name = "vg-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "The `vg` CLI: vg run -- <cmd>, vg demask, and the Bedrock adapter path."
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "vg"
+path = "src/main.rs"
+
+[dependencies]
+vg-core = { workspace = true }
+vg-adapters-claude = { workspace = true }

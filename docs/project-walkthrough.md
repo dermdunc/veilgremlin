@@ -21,8 +21,12 @@ AI coding agents pull in far more than a chat prompt: files, diffs, terminal out
 - Authored the full **requirements & design specification** (`docs/spec/`), covering Phase 0 (discovery) and Phase 1 (laptop MVP): threat model, taxonomy, hot/warm/cold path design, token vault, policy-as-code, supply-chain model, six architecture diagrams, and Go/No-Go criteria.
 - Authored the **agent factory build plan** (`docs/architecture/`): how teams of agents build this — squad-per-crate ownership, a contract-first method, the four build waves, the task DAG (T01–T11), and the frozen interface contracts that let squads work in parallel without colliding.
 - Brought the source **deep research report** into the repo (`docs/research/`).
-
-No Rust code yet — this session is design and scaffolding only (Hekton rule: stop before building unless asked to implement).
+- **2026-07-14 — Task T01 built: the real Cargo workspace.** Nine crates
+  (`vg-core`, `vg-detectors`, `vg-parsers`, `vg-vault`, `vg-policy`, `vg-audit`, `vg-cli`,
+  `vg-adapters-claude`, `vg-bench`) matching the squad-per-crate plan, `.github/workflows/ci.yml`
+  (fmt, clippy, cargo-deny, cargo-audit, build, bench compile), `deny.toml`, and a release
+  skeleton. Crates are empty skeletons — the shared types and trait definitions land in Task T02.
+  Full record: `docs/decisions.md` and `docs/walkthroughs/2026-07-14-t01-workspace-scaffold.md`.
 
 ## How the pieces fit together
 
@@ -30,7 +34,8 @@ A small hardened **Rust core** does the work: parse → detect → vault → pol
 
 ## What is deliberately not automated yet
 
-- The actual Rust implementation (Phase 1 build, tasks T01–T11).
+- The actual Rust implementation (Phase 1 build, tasks T02–T11 — T01 is the workspace/CI
+  scaffold, now done).
 - Warm-path local NER (GLiNER) — designed but off by default.
 - LiteLLM gateway, MCP server mode, CI/CD mode, cloud-agent packaging — all later phases.
 - Synthetic-data generation and quasi-identifier leakage scoring — Phase 4.
@@ -41,7 +46,9 @@ VeilGremlin is itself a demonstration of the Hekton "agent factory" model: a tea
 
 ## Current confidence level
 
-Design: high (grounded in the research report and an explicit Go/No-Go bar). Implementation: not started. Update as evidence grows.
+Design: high (grounded in the research report and an explicit Go/No-Go bar). Implementation:
+started (T01 workspace/CI built 2026-07-14, PR open — not yet merged; zero business logic yet —
+T02 onward). Update as evidence grows.
 
 ## Open questions
 
@@ -51,4 +58,6 @@ Design: high (grounded in the research report and an explicit Go/No-Go bar). Imp
 
 ## Next recommended session
 
-Confirm the first push, then dispatch Wave A: Squad X builds the Cargo workspace + CI (T01) and Squad 0 freezes the interface contracts (T02). Once both merge, batch-dispatch the five Wave B squads.
+Review and merge T01's PR (github.com/dermdunc/veilgremlin/pull/2). Then dispatch/build T02
+(Squad 0 freezes the interface contracts in `vg-core`). Once T01 and T02 both merge,
+batch-dispatch the five Wave B squads.

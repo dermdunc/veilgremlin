@@ -1,0 +1,13 @@
+[package]
+name = "vg-vault"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Encrypted placeholder vault implementing vg-core::VaultStore (SQLCipher, keychain-wrapped)."
+
+[lints]
+workspace = true
+
+[dependencies]
+vg-core = { workspace = true }

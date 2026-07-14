@@ -107,3 +107,108 @@ Scaffolded VeilGremlin as a Hekton **factory-output** project and loaded it with
 
 - `just validate-taxonomy` not yet run this session — recommend running before/after first push.
 - Mind-palace: vault card + session-log created by scaffold; repo is source of truth (boundary rule). Vault mutation not performed beyond scaffold output (`vault_mutation_allowed: false`).
+
+---
+
+## Session: GO-LIVE dispatch (real) + T01 built directly
+
+**Date:** 2026-07-14
+
+### What Changed
+
+Real `dag dispatch T01` run through `agentic-control-tower` + `engine-gateway-lab` — the
+factory's first end-to-end build event. The dispatch mechanism worked correctly (worktree
+isolation, routing, verify gate), but the nested `claude -p --permission-mode acceptEdits`
+headless call stalled on a Bash-command permission prompt with no human to approve it, and
+returned a "waiting on your approval" message instead of building anything — verify correctly
+failed on the missing `Cargo.toml`. Built T01 directly instead of retrying the nested dispatch:
+a 9-crate Cargo workspace (`vg-core`, `vg-detectors`, `vg-parsers`, `vg-vault`, `vg-policy`,
+`vg-audit`, `vg-cli`, `vg-adapters-claude`, `vg-bench`), `.github/workflows/ci.yml`, `deny.toml`,
+and a release skeleton (SBOM/signing stubbed).
+
+### Decisions
+
+See `docs/decisions.md` (2026-07-14 entry) for the full record: why direct build over retrying
+with a looser permission mode, the cargo-deny wildcard-dependency fix, and the flagged
+unattended-dispatch gap for `engine-gateway-lab`/`agentic-control-tower`.
+
+### Assumptions
+
+Empty skeleton crates are correct for T01 — `interface-contracts.md` names Squad 0/Task T02 as
+the owner of the canonical trait/type definitions, so T01's job is the workspace + CI they land
+in, not the types themselves.
+
+### Risks
+
+The dispatch-mechanism gap (headless `-p` mode cannot approve a Bash tool call) will recur for
+any future task whose agent tries to run a Bash command mid-task — flagged in
+`docs/next-actions.md`, not fixed here (out of scope for a VeilGremlin build task).
+
+### Next Actions
+
+- T02 next (freeze `vg-core` shared types + `interface-contracts.md` v1). Wave B does not
+  dispatch until T01 and T02 both merge.
+- Review/merge the T01 PR (`gateway/run-20260714-T01` → `main`).
+- Flag the unattended-dispatch permission-mode gap to `engine-gateway-lab`/
+  `agentic-control-tower` (separate repos, not addressed here).
+
+### Validation status
+
+- `cargo build --locked && cargo fmt --check` (the DAG's own verify command): PASS.
+- `cargo clippy --workspace --all-targets --locked -- -D warnings`: PASS.
+- `cargo deny check`: PASS locally (advisories/bans/licenses/sources all ok) — **but this was
+  local-only and wrong**: the real GitHub Actions `deny` job was `runs-on: macos-latest`, and
+  `cargo-deny-action@v2` is a Docker container action requiring Linux — CI failed on every push.
+  Caught by a doubt-driven-development pass later the same day (see the follow-up session entry
+  below); fixed to `ubuntu-latest`; the real CI run now shows all 6 jobs passing.
+- `cargo audit`: PASS (0 vulnerabilities, 76 dependencies scanned).
+- `cargo bench --workspace --locked --no-run`: compiles clean.
+
+---
+
+## Session: Doubt-driven-development round 2 (Codex cross-model) + fixes
+
+**Date:** 2026-07-14
+
+### What Changed
+
+After round 1's fix (CI's `deny` job to `ubuntu-latest`, confirmed green on the real GitHub
+Actions run), ran a Codex cross-model review of the same PR. Found and fixed: no `cargo test`
+CI job existed at all; the Rust toolchain was unpinned (`dtolnay/rust-toolchain@stable`, no
+`rust-toolchain.toml`); `docs/risks.md`'s RISK-0002 mitigation implied bench gating was already
+enforced when it isn't (no hot-path code exists yet to benchmark); `scripts/check-prereqs.sh`,
+`docs/local-assumptions.md`, and `scripts/verify-project.sh` still didn't check for the Rust
+toolchain at all — the exact gap flagged on 2026-07-04 and never actually applied, applied now;
+every crate hardcoded `version = "0.1.0"` on its intra-workspace path dependencies instead of
+inheriting from `[workspace.dependencies]`, which would silently drift on a version bump; and,
+found independently while double-checking round 1's own fix, `docs/project-walkthrough.md` now
+claimed "T01 is merged" when the PR is still open — round 1 fixed a stale claim and introduced a
+new one in the same edit.
+
+### Decisions
+
+Added `rust-toolchain.toml` pinning `1.96.1` (matches this machine's installed version) and
+updated every CI job's `dtolnay/rust-toolchain@stable` to `@1.96.1`. Added a `test` CI job
+(`cargo test --workspace --locked`) even though there are zero tests today — the job should
+exist before T02 adds the first ones, not be retrofitted after. Refactored intra-workspace
+dependencies through `[workspace.dependencies]` + `{ workspace = true }` (idiomatic Cargo
+pattern) rather than a literal `version = "0.1.0"` in 8 places. Applied the prereq-check fix
+that had been sitting prepared-but-unapplied since the VeilGremlin v1 dogfood runbook was
+written earlier this session.
+
+### Risks
+
+None new; this is entirely hardening of what round 1 already shipped.
+
+### Next Actions
+
+- Human: review and merge the T01 PR.
+- After merge: build/dispatch T02.
+
+### Validation status
+
+- `cargo build --locked && cargo fmt --check`: PASS (re-verified after the workspace-dependency
+  refactor).
+- `rust-toolchain.toml` added; CI actions pinned to match.
+- Real GitHub Actions run confirmed green (all 6 original jobs; `test` job added but not yet
+  re-run against the push — confirm on next CI run before merging).

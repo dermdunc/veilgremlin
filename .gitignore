@@ -10,3 +10,7 @@ node_modules/
 dist/
 build/
 .project-setup/
+
+# Rust (Task T01)
+/target/
+**/target/

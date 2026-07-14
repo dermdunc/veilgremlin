@@ -8,7 +8,7 @@ Markdown file as the human-readable explanation of material risks and mitigation
 | ID | Date | Risk | Impact | Likelihood | Mitigation | Status |
 |---|---|---|---|---|---|---|
 | RISK-0001 | 2026-06-30 | Initial governance baseline needs first human/agent review | Medium | Medium | Run governance preflight and end-session review during the first material session | Open |
-| RISK-0002 | 2026-06-30 | Hot-path latency regresses past budget (kills adoption) | High | Medium | Criterion benches gated in CI; p95<25ms assembly / <50ms e2e; arena alloc; compiled regex sets | Open |
+| RISK-0002 | 2026-06-30 | Hot-path latency regresses past budget (kills adoption) | High | Medium | Criterion benches gated in CI; p95<25ms assembly / <50ms e2e; arena alloc; compiled regex sets. **Status update 2026-07-14 (T01):** bench harness exists and compiles in CI (`cargo bench --no-run`); there is no hot-path code yet to benchmark, so p95 gating/baseline management is not enforced today — lands with the real detector/parser code in T03/T04, not before. | Open |
 | RISK-0003 | 2026-06-30 | Detector recall insufficient (raw PII leaks) | High | Medium | Layered deterministic detectors + warm-path GLiNER; red-team corpus; secret recall ≥99% / PII ≥95% gates; conservative artefact blocking | Open |
 | RISK-0004 | 2026-06-30 | False positives degrade utility; developers disable the tool | High | Medium | FP budget <3% reviewed; allow-lists; `vg inspect`/`diff` transparency; <50ms overhead | Open |
 | RISK-0005 | 2026-06-30 | Demask re-exposes values to a cloud model | Critical | Low | Destination-typed deny; `remote_model_prompt` hard-deny; model has no vault handle; rehydration is a separate local gate | Open |

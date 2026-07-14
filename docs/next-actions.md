@@ -80,3 +80,7 @@ Repo source-of-truth for the work queue. Tasks T01–T11 are defined in [`archit
 - [ ] ~~Fix coderturtle SSH key registration~~ — superseded 2026-07-04: the repo is moving off
       coderturtle entirely, so this is moot for VeilGremlin (the SSH host alias itself
       (`github.com-coderturtle`) remains fine for other coderturtle-owned repos).
+
+## Session Update: 2026-07-14 — T01 built + two doubt-driven-development rounds + PR merged
+
+- [ ] Human: dispatch/build T02 (freeze vg-core's shared types + interface-contracts.md v1) -- Wave B doesn't start until T01 and T02 both merge; consider whether engine-gateway-lab/agentic-control-tower's branch-naming convention should be reconciled with agent-factory-plan.md's before T02 dispatches.

@@ -14,7 +14,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.96.1
         with:
           components: rustfmt
       - run: cargo fmt --all --check
@@ -24,7 +24,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.96.1
         with:
           components: clippy
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
@@ -34,8 +34,16 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.96.1
       - run: cargo build --workspace --locked
+
+  test:
+    name: cargo test --locked
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.96.1
+      - run: cargo test --workspace --locked
 
   deny:
     name: cargo-deny check
@@ -52,7 +60,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.96.1
       - run: cargo install cargo-audit --locked
       - run: cargo audit
 
@@ -61,5 +69,5 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.96.1
       - run: cargo bench --workspace --locked --no-run

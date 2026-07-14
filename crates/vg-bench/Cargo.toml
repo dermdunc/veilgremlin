@@ -10,7 +10,7 @@ description = "Criterion bench harness + Go/No-Go eval report for VeilGremlin's 
 workspace = true
 
 [dependencies]
-vg-core = { path = "../vg-core", version = "0.1.0" }
+vg-core = { workspace = true }
 
 [dev-dependencies]
 criterion = "0.5"

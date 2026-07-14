@@ -10,4 +10,4 @@ description = "Claude Code hook adapter (UserPromptSubmit/PreToolUse/PostToolUse
 workspace = true
 
 [dependencies]
-vg-core = { path = "../vg-core", version = "0.1.0" }
+vg-core = { workspace = true }

@@ -46,6 +46,19 @@ Repo source-of-truth for the work queue. Tasks T01–T11 are defined in [`archit
       also `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo deny check`,
       and `cargo audit` all pass; `cargo bench --workspace --locked --no-run` compiles. PR
       opened against `main` from `gateway/run-20260714-T01`.
+- [x] **Two rounds of doubt-driven-development on the T01 PR — done, 2026-07-14.** Round 1
+      (single-model): found the `deny` CI job was actually failing on the real GitHub Actions
+      run (`macos-latest` + a Docker container action); fixed, re-verified the real run is now
+      green (all 6 jobs pass). Round 2 (Codex cross-model): found no `cargo test` CI job, an
+      unpinned Rust toolchain, a stale bench-gating claim in `docs/risks.md`, stale
+      reproducibility scripts (`check-prereqs.sh`/`local-assumptions.md`/`verify-project.sh`
+      didn't check for the Rust toolchain at all — the exact same gap flagged back on
+      2026-07-04 and never actually applied until now), hardcoded intra-workspace dependency
+      versions that would drift on a workspace version bump, and — ironically — a "T01 is
+      merged" overclaim introduced by round 1's own project-walkthrough.md fix (the PR isn't
+      merged yet). All fixed; see `docs/decisions.md` for the full record.
+- [ ] **Human: review and merge the T01 PR** (github.com/dermdunc/veilgremlin/pull/2) — CI is
+      green; two doubt-driven-development passes have run against it.
 - [ ] **T02** — Freeze shared types + library API in `vg-core`; finalise `architecture/interface-contracts.md` v1 — *Squad 0*
 
 ## This Week (Wave B — dispatch in parallel once T01+T02 merge)

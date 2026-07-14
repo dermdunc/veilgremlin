@@ -102,3 +102,36 @@ agent_runs:
     next_actions:
       - "Confirm the CI fix goes green on the real PR before merging."
       - "After merge: build/dispatch T02."
+  - id: RUN-0004
+    date: 2026-07-14
+    agent: "codex (cross-model review) + claude (fix)"
+    role: "Build Agent"
+    intent: "Second doubt-driven-development pass on the T01 PR (Codex cross-model, seeded with round 1's findings) after round 1's CI fix was confirmed green; fix what it found."
+    autonomy_level: 3
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    files_touched:
+      - "Cargo.toml"
+      - "rust-toolchain.toml"
+      - "crates/*/Cargo.toml"
+      - ".github/workflows/ci.yml"
+      - "docs/risks.md"
+      - "scripts/check-prereqs.sh"
+      - "scripts/verify-project.sh"
+      - "docs/local-assumptions.md"
+      - "docs/project-walkthrough.md"
+      - "README.md"
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"
+    validation:
+      - "cargo build --locked && cargo fmt --check: PASS (re-verified after workspace-dependency refactor)"
+      - "Real GitHub Actions run confirmed green on round 1's fix before round 2 started"
+    risks:
+      - "New CI test job added but not yet confirmed on a real GitHub Actions run — re-verify on next push before merging, same discipline as round 1."
+    next_actions:
+      - "Human: review and merge the T01 PR (github.com/dermdunc/veilgremlin/pull/2)."
+      - "Confirm the new cargo test CI job passes on the real run."
+      - "After merge: build/dispatch T02."

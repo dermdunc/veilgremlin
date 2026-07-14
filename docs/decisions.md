@@ -178,3 +178,63 @@ that wasn't true for the environment that actually matters, not the one that was
 check locally. The pattern is the same both times: verify against the real target (a live
 GitHub Actions run here; a 0-byte YAML file there), not against what ran cleanly on this one
 machine.
+
+## 2026-07-14 - Doubt-driven-development round 2 (Codex cross-model): six more findings, fixed
+
+### Context
+
+After round 1's fix was independently confirmed (real GitHub Actions run green, all 6 jobs
+passing), ran a second, cross-model review (Codex, `codex exec --sandbox read-only`) against the
+same T01 PR, seeded with round 1's findings and instructed to focus on what round 1 might have
+missed rather than re-confirm it.
+
+### Findings and disposition
+
+- **Confirmed, fixed:** no `cargo test` CI job existed. T01 itself has no logic to test, but the
+  job should exist now so T02 onward's first real tests are gated in CI from day one rather than
+  retrofitted later. Added a `test` job to `.github/workflows/ci.yml`.
+- **Confirmed, fixed:** the Rust toolchain was unpinned — every CI job used
+  `dtolnay/rust-toolchain@stable` (a floating channel, not a pinned version), and no
+  `rust-toolchain.toml` existed, contradicting this project's own reproducibility standard
+  ("documented → scripted → idempotent-ish → logged → reproducible on a blank machine"). Added
+  `rust-toolchain.toml` (channel `1.96.1`, matching this machine's installed toolchain) and
+  pinned every CI job's `dtolnay/rust-toolchain` ref to the same version.
+- **Confirmed, fixed:** `docs/risks.md`'s RISK-0002 mitigation read as if bench-based p95 gating
+  were already enforced in CI. It isn't — there's no hot-path code yet to benchmark; only the
+  harness compiles. Added a status-update note to the mitigation cell rather than rewriting the
+  aspirational target, which is still correct for later tasks.
+- **Confirmed, fixed — and the most on-the-nose finding of the whole session:**
+  `scripts/check-prereqs.sh`, `docs/local-assumptions.md`, and `scripts/verify-project.sh` still
+  didn't check for the Rust toolchain at all, meaning they'd pass clean on a machine with no
+  Cargo whatsoever — the *exact* gap flagged in `docs/next-actions.md` on 2026-07-04
+  ("`check-prereqs.sh` doesn't check for it either... needs: Rust toolchain... and
+  `check-prereqs.sh` updated to check for all three so this doesn't get silently rediscovered
+  again") and prepared as an unapplied diff in `~/hekton`'s VeilGremlin dogfood runbook earlier
+  this same session — but never actually applied to this repo until this fix. Applied now, to
+  all three files, plus made `verify-project.sh` actually run `cargo build --locked && cargo fmt
+  --check` rather than only check file presence.
+- **Confirmed, fixed:** every crate hardcoded `version = "0.1.0"` on its intra-workspace `path`
+  dependencies (added in round 1 to satisfy `cargo-deny`'s wildcard-dependency check). This
+  works today but would silently drift from `[workspace.package].version` on the next bump —
+  8 places to remember to update by hand. Refactored to the idiomatic Cargo pattern:
+  `[workspace.dependencies]` declares each `vg-*` crate once (path + version), and every
+  consuming crate uses `{ workspace = true }`. A version bump now only touches two places
+  (`workspace.package.version` and `workspace.dependencies`), not every crate.
+- **Confirmed, fixed — ironic given the whole exercise:** round 1's own fix to
+  `docs/project-walkthrough.md` (correcting the stale "No Rust code yet" claim) introduced a new
+  overclaim: "T01 workspace/CI merged 2026-07-14" and "T01 is merged" — the PR was (and still
+  is, pending human review) open, not merged. Fixed to "built... PR open — not yet merged."
+  Same overclaim did not appear in the dedicated walkthrough doc, only in the updated
+  `project-walkthrough.md` sections. Also corrected `README.md`'s stale "Next: Wave A" status
+  line (still described T01 as not-yet-started) and `docs/session-log.md`'s unqualified `cargo
+  deny check: PASS` line (now notes it was local-only and wrong for the real CI run).
+
+### Why this matters
+
+Two real lessons, not one: first, the same "verify the real target, not the convenient one"
+lesson as round 1 (the check-prereqs.sh gap in particular — a fix sitting *written and ready* in
+a different repo's runbook for hours before actually being applied here, because nobody closed
+that loop until an adversarial review asked "does this script still lie about what's required?").
+Second, a fix session can introduce its own overclaim while correcting someone else's — the
+"T01 is merged" line proves that doubt-driven-development needs to re-examine its own prior
+output, not just the original artifact, on each cycle.

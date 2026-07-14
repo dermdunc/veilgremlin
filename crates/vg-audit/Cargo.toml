@@ -10,4 +10,4 @@ description = "Append-only, redaction-safe audit sink implementing vg-core::Audi
 workspace = true
 
 [dependencies]
-vg-core = { path = "../vg-core", version = "0.1.0" }
+vg-core = { workspace = true }

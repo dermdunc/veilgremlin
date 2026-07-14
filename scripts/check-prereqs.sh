@@ -38,6 +38,19 @@ for cmd in git bash sed date mkdir printf; do
   fi
 done
 
+# T01 (2026-07-14) made this a real Rust workspace; CI's own verify command is
+# `cargo build --locked && cargo fmt --check`. Check for the full toolchain so a
+# missing piece is caught here instead of silently rediscovered at dispatch time
+# (as happened 2026-07-04, when this script still only checked git/bash/sed/etc.).
+for cmd in cargo rustc rustfmt cargo-clippy cargo-deny cargo-audit; do
+  if command -v "$cmd" >/dev/null 2>&1; then
+    log "OK: $cmd"
+  else
+    log "MISSING: $cmd (install: brew install rust; brew install cargo-deny cargo-audit, or via cargo install)"
+    missing=1
+  fi
+done
+
 if [ "$missing" -ne 0 ]; then
   log "Prerequisite check failed"
   exit 1

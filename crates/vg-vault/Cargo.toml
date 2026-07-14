@@ -10,4 +10,4 @@ description = "Encrypted placeholder vault implementing vg-core::VaultStore (SQL
 workspace = true
 
 [dependencies]
-vg-core = { path = "../vg-core", version = "0.1.0" }
+vg-core = { workspace = true }

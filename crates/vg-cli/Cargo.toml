@@ -14,5 +14,5 @@ name = "vg"
 path = "src/main.rs"
 
 [dependencies]
-vg-core = { path = "../vg-core", version = "0.1.0" }
-vg-adapters-claude = { path = "../vg-adapters-claude", version = "0.1.0" }
+vg-core = { workspace = true }
+vg-adapters-claude = { workspace = true }

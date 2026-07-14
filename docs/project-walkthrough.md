@@ -47,8 +47,8 @@ VeilGremlin is itself a demonstration of the Hekton "agent factory" model: a tea
 ## Current confidence level
 
 Design: high (grounded in the research report and an explicit Go/No-Go bar). Implementation:
-started (T01 workspace/CI merged 2026-07-14; zero business logic yet — T02 onward). Update as
-evidence grows.
+started (T01 workspace/CI built 2026-07-14, PR open — not yet merged; zero business logic yet —
+T02 onward). Update as evidence grows.
 
 ## Open questions
 
@@ -58,5 +58,6 @@ evidence grows.
 
 ## Next recommended session
 
-T01 is merged. Dispatch/build T02 (Squad 0 freezes the interface contracts in `vg-core`). Once
-T01 and T02 both merge, batch-dispatch the five Wave B squads.
+Review and merge T01's PR (github.com/dermdunc/veilgremlin/pull/2). Then dispatch/build T02
+(Squad 0 freezes the interface contracts in `vg-core`). Once T01 and T02 both merge,
+batch-dispatch the five Wave B squads.

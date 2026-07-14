@@ -57,3 +57,21 @@ changes:
       - "docs/session-log.md"
       - "docs/walkthroughs/2026-07-14-t01-workspace-scaffold.md"
       - "https://github.com/dermdunc/veilgremlin/pull/2"
+  - id: CHG-0004
+    date: 2026-07-14
+    title: "T01 hardening: cargo test CI job, pinned toolchain, workspace.dependencies, reproducibility-script fixes"
+    intent: "Fix six findings from a second (Codex cross-model) doubt-driven-development pass on the T01 PR: missing cargo test CI job, unpinned Rust toolchain, a stale bench-gating claim, stale reproducibility scripts (finally applying the check-prereqs.sh fix flagged 2026-07-04), hardcoded intra-workspace dependency versions, and a merged/not-merged overclaim introduced by round 1's own fix."
+    changed_by: "codex (review) + claude (fix)"
+    change_type: build
+    risk_level: low
+    validation:
+      - "cargo build --locked && cargo fmt --check: PASS after the workspace-dependency refactor"
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    links:
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"
+      - "https://github.com/dermdunc/veilgremlin/pull/2"

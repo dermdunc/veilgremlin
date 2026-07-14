@@ -20,3 +20,17 @@ publish = false
 
 [workspace.lints.clippy]
 all = "warn"
+
+# Intra-workspace deps declared once here so a version bump in [workspace.package]
+# doesn't require touching every crate's Cargo.toml individually (a plain
+# `{ path = "...", version = "0.1.0" }` in each crate would silently drift from the
+# workspace version on the next bump — cargo-deny's bans check requires *some*
+# version on a path dependency, but doesn't care where it's declared).
+[workspace.dependencies]
+vg-core = { path = "crates/vg-core", version = "0.1.0" }
+vg-detectors = { path = "crates/vg-detectors", version = "0.1.0" }
+vg-parsers = { path = "crates/vg-parsers", version = "0.1.0" }
+vg-vault = { path = "crates/vg-vault", version = "0.1.0" }
+vg-policy = { path = "crates/vg-policy", version = "0.1.0" }
+vg-audit = { path = "crates/vg-audit", version = "0.1.0" }
+vg-adapters-claude = { path = "crates/vg-adapters-claude", version = "0.1.0" }

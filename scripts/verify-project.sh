@@ -48,6 +48,20 @@ for path in \
   check_file "$path"
 done
 
+# Task T01 (2026-07-14) made this a real Cargo workspace. Presence checks alone would
+# pass on a machine with no Rust toolchain at all — actually run the workspace's own
+# verify command (matches the DAG's verify_command in .control-tower/sessions/T01.jsonl).
+if [ -f "$ROOT_DIR/Cargo.toml" ]; then
+  if [ "$DRY_RUN" -eq 1 ]; then
+    log "DRY-RUN: would run cargo build --locked && cargo fmt --check in $ROOT_DIR"
+  elif (cd "$ROOT_DIR" && cargo build --locked && cargo fmt --all --check); then
+    log "OK: cargo build --locked && cargo fmt --check"
+  else
+    log "MISSING: cargo build --locked && cargo fmt --check did not pass"
+    failures=$((failures + 1))
+  fi
+fi
+
 if [ "$failures" -ne 0 ]; then
   log "Verification failed with $failures issue(s)"
   exit 1

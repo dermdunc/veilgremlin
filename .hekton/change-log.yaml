@@ -35,3 +35,25 @@ changes:
       - "docs/decisions.md"
       - "docs/next-actions.md"
       - "docs/risks.md"
+  - id: CHG-0003
+    date: 2026-07-14
+    title: "Task T01: Cargo workspace + crate skeletons + CI + supply-chain skeleton"
+    intent: "Scaffold the 9-crate workspace (vg-core, vg-detectors, vg-parsers, vg-vault, vg-policy, vg-audit, vg-cli, vg-adapters-claude, vg-bench) plus CI and cargo-deny config so Wave B squads have a workspace to build in. Built directly after the real ACT GO-LIVE dispatch stalled on a headless permission-mode gap (nested claude -p call couldn't approve a Bash tool call)."
+    changed_by: "human + claude (interactive session)"
+    change_type: build
+    risk_level: low
+    validation:
+      - "cargo build --locked && cargo fmt --check (T01's own DAG verify command): PASS"
+      - "cargo clippy --workspace --all-targets --locked -- -D warnings: PASS"
+      - "cargo audit: PASS, 0 vulnerabilities"
+      - "doubt-driven-development pass found and fixed: cargo-deny CI job was actually red on macos-latest (Docker container action needs Linux); agent-run-log.yaml/change-log.yaml and project-walkthrough.md left stale"
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    links:
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"
+      - "docs/walkthroughs/2026-07-14-t01-workspace-scaffold.md"
+      - "https://github.com/dermdunc/veilgremlin/pull/2"

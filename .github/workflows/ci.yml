@@ -39,7 +39,10 @@ jobs:
 
   deny:
     name: cargo-deny check
-    runs-on: macos-latest
+    # EmbarkStudios/cargo-deny-action is a Docker container action — container actions
+    # only run on Linux-hosted runners, not macos-latest (confirmed failing in CI
+    # 2026-07-14: "Container action is only supported on Linux" before this fix).
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: EmbarkStudios/cargo-deny-action@v2

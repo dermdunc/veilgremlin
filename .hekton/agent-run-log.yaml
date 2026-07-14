@@ -57,3 +57,48 @@ agent_runs:
       - "Repo is now public before any real code exists to review — mitigated by doing this move before Wave A build work starts, not after."
     next_actions:
       - "None outstanding for this move; T01/T02 dispatch remains separately deferred (docs/next-actions.md)."
+  - id: RUN-0003
+    date: 2026-07-14
+    agent: "claude (interactive session)"
+    role: "Build Agent"
+    intent: "Build Task T01 (Cargo workspace + crate skeletons + CI + supply-chain skeleton) after the real ACT GO-LIVE dispatch stalled on a headless permission-mode gap; then run doubt-driven-development on the resulting PR and fix what it found."
+    autonomy_level: 3
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    files_touched:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/vg-core/**"
+      - "crates/vg-detectors/**"
+      - "crates/vg-parsers/**"
+      - "crates/vg-vault/**"
+      - "crates/vg-policy/**"
+      - "crates/vg-audit/**"
+      - "crates/vg-cli/**"
+      - "crates/vg-adapters-claude/**"
+      - "crates/vg-bench/**"
+      - "deny.toml"
+      - ".github/workflows/ci.yml"
+      - "release/README.md"
+      - ".gitignore"
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"
+      - "docs/project-walkthrough.md"
+      - "docs/walkthroughs/2026-07-14-t01-workspace-scaffold.md"
+      - ".hekton/agent-run-log.yaml"
+      - ".hekton/change-log.yaml"
+    validation:
+      - "cargo build --locked && cargo fmt --check (T01's own DAG verify command): PASS"
+      - "cargo clippy --workspace --all-targets --locked -- -D warnings: PASS"
+      - "cargo deny check (local): PASS; cargo bench --workspace --locked --no-run: compiles"
+      - "cargo audit: PASS, 0 vulnerabilities, 76 dependencies scanned"
+      - "doubt-driven-development (fresh-context review, verified live against the real GitHub Actions run rather than trusting local claims): found the deny CI job actually failing on macos-latest (Docker container actions require Linux) despite local PASS claims; found agent-run-log.yaml/change-log.yaml and project-walkthrough.md left stale — all fixed this run"
+    risks:
+      - "CI's cargo-deny job was red on first push (fixed: runs-on changed to ubuntu-latest) — re-verify the actual GitHub Actions run goes green, not just that the YAML looks correct."
+      - "Branch name (gateway/run-20260714-T01, from the dispatch tooling's own convention) doesn't match agent-factory-plan.md's documented feat/<squad>-<task-id>-<slug> convention — flagged in docs/decisions.md, not renamed (already pushed with an open PR)."
+    next_actions:
+      - "Confirm the CI fix goes green on the real PR before merging."
+      - "After merge: build/dispatch T02."

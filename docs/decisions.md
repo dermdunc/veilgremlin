@@ -129,3 +129,52 @@ to satisfy it, a standard pattern, not a workaround.
   is out of scope for a VeilGremlin build task.
 - T02 (freeze `vg-core`'s shared types) is next; per `agent-factory-plan.md`, Wave B does not
   dispatch until T01 **and** T02 both merge.
+
+## 2026-07-14 - Doubt-driven-development on the T01 PR: CI was actually red, docs overclaimed
+
+### Context
+
+Before merging the T01 PR (#2), ran a fresh-context adversarial review against the actual task
+spec, `interface-contracts.md`, and `agent-factory-plan.md`, with instructions to independently
+verify every claim rather than trust the text — including by reading the real GitHub Actions
+run, not just the local terminal output this session had already captured.
+
+### Findings and disposition
+
+- **Confirmed, fixed:** the `deny` job in `.github/workflows/ci.yml` was `runs-on: macos-latest`.
+  `EmbarkStudios/cargo-deny-action@v2` is a Docker container action — container actions only run
+  on Linux-hosted GitHub runners. The actual PR's CI run failed on this job on every push
+  ("Container action is only supported on Linux"), while every doc this session wrote —
+  including the entry above, `docs/session-log.md`, and the PR body — claimed "cargo deny check:
+  PASS." That claim was true for the local Homebrew binary, a different execution path from the
+  Docker-based CI job; nobody had checked the real CI run before writing "PASS." Fixed:
+  `runs-on: ubuntu-latest` for that job only.
+- **Confirmed, fixed:** this project is explicitly bound to `~/hekton`'s Hekton Documentation
+  Contract (`CLAUDE.md:18`), which requires `.hekton/agent-run-log.yaml` and
+  `.hekton/change-log.yaml` updated every session with a structural/build change — T01 is exactly
+  that kind of change (a from-scratch build engine), and neither file was touched. Added
+  `RUN-0003`/`CHG-0003`.
+- **Confirmed, fixed:** `docs/project-walkthrough.md` still read "No Rust code yet... session is
+  design and scaffolding only" and "Implementation: not started" after T01's real code existed —
+  the Plain-English Walkthrough Contract requires this file stay current and a dated entry land
+  under `docs/walkthroughs/` after a meaningful build session. Updated the walkthrough file and
+  added `docs/walkthroughs/2026-07-14-t01-workspace-scaffold.md`.
+- **Confirmed, not fixed (flagged instead):** the branch (`gateway/run-20260714-T01`, the ACT/
+  engine-gateway dispatch tooling's own naming convention) doesn't match
+  `agent-factory-plan.md`'s documented `feat/<squad>-<task-id>-<slug>` convention. Not renamed —
+  the branch is already pushed with an open PR, and renaming it costs more (force-push, PR
+  re-target) than the mismatch itself does. Recorded as a real, unreconciled gap between two
+  repos' git conventions for a future session to resolve, not silently accepted.
+- **Verified genuinely correct** (reviewer ran the actual commands, not just read the code): the
+  9-crate layout matches the squad ownership table exactly; `[lints] workspace = true` is present
+  in every crate and clippy's `-D warnings` genuinely passes with zero suppressions; the `vg`
+  binary name and `vg-bench`'s criterion wiring are both correct; no crate is missing.
+
+### Why this matters
+
+This is the second time this session that an independent, fresh-context check (first the lab-
+readiness eval's own doubt-driven-development pass, now this one) caught a claim of "all pass"
+that wasn't true for the environment that actually matters, not the one that was convenient to
+check locally. The pattern is the same both times: verify against the real target (a live
+GitHub Actions run here; a 0-byte YAML file there), not against what ran cleanly on this one
+machine.

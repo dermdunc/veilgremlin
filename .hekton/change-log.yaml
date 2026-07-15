@@ -75,3 +75,18 @@ changes:
       - "docs/next-actions.md"
       - "docs/session-log.md"
       - "https://github.com/dermdunc/veilgremlin/pull/2"
+
+  - id: CHG-905488f6
+    date: 2026-07-14
+    title: "T01 merged: Cargo workspace + CI + supply-chain skeleton, hardened via two doubt-driven-development rounds"
+    intent: "Built Task T01 (9-crate Cargo workspace + CI + supply-chain skeleton) after the real ACT GO-LIVE dispatch stalled on a headless permission-mode gap. Ran two doubt-driven-development rounds (single-model, then Codex cross-model) that found and fixed a red CI job (cargo-deny-action needs Linux runners), missing test/toolchain-pin CI, stale reproducibility scripts, hardcoded dependency versions, and several stale-doc overclaims (including one round 1 itself introduced). Rewrote all 3 commits to use the Hekton commit footer (Hekton-Engine/Harness/Model/Workflow) instead of the generic Claude Code co-author line. PR #2 merged to main."
+    changed_by: "Claude Code (Sonnet 5)"
+    change_type: build
+    risk_level: low
+    validation:
+      - "not recorded"
+    approvals:
+      required: false
+      status: not_required
+    links:
+      - "docs/session-log.md"

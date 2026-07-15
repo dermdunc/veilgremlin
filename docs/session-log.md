@@ -272,12 +272,52 @@ None new. Branch-naming mismatch (same issue as T01) still unresolved — see de
 
 ### Next Actions
 
+- [x] Doubt-driven-development pass — done 2026-07-15, see below.
 - Human: review/merge the T02 PR.
-- Human: decide on a doubt-driven-development pass for T02 before merging (same discipline as
-  T01's two rounds — `rehydrate`'s hard-deny gate is real security logic, not just scaffolding).
 - Once T01 + T02 both merge: batch-dispatch Wave B (T03/T04, T05, T05b, T06, T08).
 
 ### Validation status
 
 - `cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check &&
   cargo test` (T02's own verify_command): PASS, 6 tests green.
+
+---
+
+## Session: Doubt-driven-development on T02 (two rounds) + fixes
+
+**Date:** 2026-07-15
+
+### What Changed
+
+Ran the same two-round process as T01 (single-model, then Codex cross-model) against the T02
+PR. Most severe finding: `interface-contracts.md` was never touched despite being T02's literal
+acceptance criterion, still read "DRAFT," and was missing 11 types the real code needed. Most
+severe *code* finding: the conformance example's `MockVault::resolve` ignored its namespace
+parameter entirely — a value interned under one namespace would resolve under any other. Fixed
+both, plus five more conformance-helper gaps (no `PolicyEngine` helper, an audit-escaping
+false-negative, `MaskedPack`'s check missing a field, missing span-bounds validation, `Sized`
+bounds blocking `dyn Trait` callers) and one documented-not-fixed contract-shape limitation
+(`Secret`'s zeroize-on-drop is cosmetic given `rehydrate`'s own frozen return type).
+
+### Decisions
+
+Reconciled `interface-contracts.md` in the same PR rather than a separate contract-change PR,
+since nothing has consumed the "frozen" contract yet (Wave B hasn't dispatched) — see
+decisions.md for the full record and rationale on each fix.
+
+### Risks
+
+None new. The vault namespace-isolation bug is now caught by a passing test
+(`assert_vault_roundtrip` requires a second, distinct namespace and asserts cross-namespace
+resolution fails) rather than silently absent.
+
+### Next Actions
+
+- Human: review/merge the T02 PR (both interface-contracts.md and the code fixes are now in it).
+- Once T01 + T02 both merge: batch-dispatch Wave B.
+
+### Validation status
+
+- `cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check &&
+  cargo test`: PASS, 7 tests green in `vg-core` (was 6 — added the cross-namespace-rejection
+  coverage and the adversarial-buffer parser battery).

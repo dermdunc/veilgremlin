@@ -70,6 +70,14 @@ pub trait Parser: Send + Sync {
 
 /// A raw sensitive value, held only long enough to intern or resolve it. Zeroized on
 /// drop; `Debug` never prints the value.
+///
+/// **Known limitation, inherent to the frozen contract, not introduced here:**
+/// `expose_secret` returns a borrowed `&str`; a caller can `.to_string()` a copy that
+/// escapes the zeroize-on-drop guarantee, and `rehydrate`'s frozen signature
+/// (`-> Result<String, RehydrateDenied>`) requires returning an owned, non-zeroizing
+/// `String` at the one exit point that matters. Callers of `expose_secret`/`rehydrate`'s
+/// output are responsible for not persisting or logging the returned value — the type
+/// system does not and cannot enforce this given the contract's shape.
 pub struct Secret(String);
 
 impl Secret {
@@ -104,6 +112,18 @@ pub struct Placeholder {
 /// Contract: AES-256 at rest (SQLCipher); DB key wrapped by OS keychain, never persisted
 /// plaintext; stable placeholder via salted HMAC over `(canonical(value), ty, ns)`.
 /// `IrreversibleRedact` values are never passed to `intern`.
+///
+/// **Namespace isolation is part of the contract, not a convention**: `ns` in `resolve`
+/// must match the `ns` the `Placeholder` was interned under. A value interned in one
+/// `Namespace` (e.g. `Session(A)`) must never resolve when called with a different one
+/// (e.g. `Session(B)`, or a different `Repo`/`Org`) — return
+/// [`VaultError::NotFound`] on a namespace mismatch, the same as an unknown mapping.
+/// This is exactly what `Namespace` scoping exists to guarantee (interface-contracts.md
+/// §5: "the same raw value maps to the same placeholder only within the same
+/// namespace") — a value leaking across namespaces on `resolve` defeats that guarantee
+/// as surely as leaking it in `MaskedPack.text` would. [`crate::conformance`]'s
+/// `assert_vault_roundtrip` checks this explicitly; any impl (including test mocks)
+/// must not skip it.
 pub trait VaultStore: Send + Sync {
     /// Returns the existing placeholder or creates one. Stores an encrypted mapping.
     fn intern(
@@ -114,7 +134,8 @@ pub trait VaultStore: Send + Sync {
     ) -> Result<Placeholder, VaultError>;
 
     /// Reverses a placeholder to its raw value. Caller must already be
-    /// policy-authorised.
+    /// policy-authorised. Must return `Err(VaultError::NotFound)` if `ns` does not
+    /// match the namespace `p` was interned under — see the trait-level doc.
     fn resolve(&self, p: &Placeholder, ns: &Namespace) -> Result<Secret, VaultError>;
 
     fn purge_expired(&self) -> Result<usize, VaultError>;

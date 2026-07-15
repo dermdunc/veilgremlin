@@ -107,10 +107,16 @@ pub struct MaskStats {
     pub blocked_artefacts: usize,
 }
 
-/// The only thing serialized toward a model. **Contains no raw detected value or vault
-/// key** — enforced by `mask()`'s implementation (Task T07) and checked by
-/// [`crate::conformance::assert_masked_pack_excludes_raw_values`] in downstream
-/// integration tests.
+/// The only thing serialized toward a model. **Must contain no raw detected value or
+/// vault key** — produced correctly by `mask()`'s implementation (Task T07) and checked
+/// in tests by [`crate::conformance::assert_masked_pack_excludes_raw_values`].
+///
+/// This is a testing/convention discipline, not a type-system guarantee: every field
+/// here is `pub` with no smart constructor, so nothing stops code from hand-constructing
+/// a `MaskedPack` with raw values in `.text` directly, bypassing `mask()` entirely.
+/// `MappingRef` being an opaque `Uuid` (never a real key) is what makes "no vault key"
+/// true by construction; "no raw detected value" depends entirely on `mask()`'s own
+/// correctness and the conformance test's coverage, not on anything this type enforces.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaskedPack {
     pub text: String,

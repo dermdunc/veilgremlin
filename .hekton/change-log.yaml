@@ -109,3 +109,21 @@ changes:
       - "docs/decisions.md"
       - "docs/next-actions.md"
       - "docs/session-log.md"
+
+  - id: CHG-0006
+    date: 2026-07-15
+    title: "T02 hardening: interface-contracts.md actually frozen, vault namespace-isolation bug fixed"
+    intent: "Fix findings from a two-round doubt-driven-development pass (single-model + Codex cross-model) on the T02 PR: interface-contracts.md was never reconciled/frozen despite being T02's own acceptance criterion (11 missing types, 2 deviations); MockVault's conformance example ignored its namespace parameter on resolve (real cross-namespace leak in the Wave B template); 6 more conformance-helper gaps (missing PolicyEngine helper, audit-escaping false-negative, MaskedPack check missing a field, missing span-bounds check, Sized bounds blocking dyn Trait callers, vacuous parser test); 1 documented (not fixed) contract-shape limitation on Secret's zeroize."
+    changed_by: "claude (review) + codex (review) + claude (fix)"
+    change_type: build
+    risk_level: medium
+    validation:
+      - "cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check && cargo test: PASS, 7 tests green"
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    links:
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"

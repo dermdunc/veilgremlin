@@ -191,3 +191,29 @@ agent_runs:
       - "Human: review/merge the T02 PR."
       - "Human: decide on a doubt-driven-development pass for T02."
       - "Once T01 + T02 both merge: batch-dispatch Wave B (T03/T04, T05, T05b, T06, T08)."
+  - id: RUN-0006
+    date: 2026-07-15
+    agent: "claude (fresh-context review) + codex (cross-model review) + claude (fix)"
+    role: "Build Agent"
+    intent: "Two-round doubt-driven-development on the T02 PR (single-model then Codex cross-model), then fix every confirmed finding: interface-contracts.md never frozen/reconciled (11 missing types, 2 deviations), MockVault ignoring namespace on resolve, 6 more conformance-helper gaps, 1 documented contract-shape limitation."
+    autonomy_level: 3
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    files_touched:
+      - "docs/architecture/interface-contracts.md"
+      - "crates/vg-core/src/traits.rs"
+      - "crates/vg-core/src/types.rs"
+      - "crates/vg-core/src/conformance.rs"
+      - "crates/vg-core/tests/conformance_stubs.rs"
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"
+    validation:
+      - "cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check && cargo test: PASS, 7 tests green (was 6 -- added cross-namespace-rejection coverage and adversarial-buffer parser battery)"
+    risks:
+      - "None new. The vault namespace-isolation bug is now caught by a passing test rather than silently absent."
+    next_actions:
+      - "Human: review/merge the T02 PR."
+      - "Once T01 + T02 both merge: batch-dispatch Wave B (T03/T04, T05, T05b, T06, T08)."

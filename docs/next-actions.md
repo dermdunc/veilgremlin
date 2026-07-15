@@ -99,10 +99,15 @@ Repo source-of-truth for the work queue. Tasks T01–T11 are defined in [`archit
 
 ## Session Update: 2026-07-15 — T02 built
 
+- [x] Doubt-driven-development pass (two rounds: single-model + Codex cross-model) — done
+      2026-07-15. Most severe: `interface-contracts.md` was never frozen/reconciled despite
+      being T02's literal acceptance criterion — now fixed, 11 missing types added, two
+      deviations reconciled. Most severe code finding: the conformance example's `MockVault`
+      ignored its namespace parameter on resolve — real cross-namespace leak in the template
+      every Wave B squad reads; fixed, and now covered by a test. Six more conformance-helper
+      gaps fixed; one contract-shape limitation documented (not fixed — `Secret`'s zeroize is
+      cosmetic given `rehydrate`'s own return type). Full record in `docs/decisions.md`.
 - [ ] Human: review/merge the T02 PR.
-- [ ] Human: decide on a doubt-driven-development pass for T02 (T01 got two rounds before
-      merging — same discipline should probably apply here, especially since `rehydrate`'s
-      hard-deny gate is real security-relevant logic, not a stub).
 - [ ] Once T01 + T02 are both merged, batch-dispatch the five Wave B squads (T03/T04, T05,
       T05b, T06, T08).
 - [ ] Still open: the branch-naming mismatch between the ACT/engine-gateway dispatch

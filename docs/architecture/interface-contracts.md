@@ -1,6 +1,6 @@
-# VeilGremlin — Interface Contracts (v1, freeze target)
+# VeilGremlin — Interface Contracts (v1, frozen)
 
-**Status:** DRAFT until end of Wave A (Task T02), then **FROZEN**. After freeze, changes go through the contract-change protocol in `agent-factory-plan.md` §6 and bump the version.
+**Status:** **FROZEN as of 2026-07-15 (Task T02).** Changes now go through the contract-change protocol in `agent-factory-plan.md` §6 and bump the version below. This document was reconciled against the actual `vg-core` code at freeze time (a doubt-driven-development pass on the T02 PR found it had drifted from the implementation before either landed) — every type and trait below now matches `crates/vg-core/src/{types,traits,api}.rs` exactly, including the supporting types (§0) the original draft's illustrative signatures used but never defined.
 
 These are the seams that let squads build in parallel. They are illustrative Rust signatures — Squad 0 owns the canonical definitions in `vg-core`. Other squads implement against these traits and **do not** depend on each other's internals.
 
@@ -8,16 +8,67 @@ These are the seams that let squads build in parallel. They are illustrative Rus
 
 ---
 
+## 0. Supporting types (owned by `vg-core`)
+
+The draft version of this document used these types in illustrative signatures without
+defining them. Added at freeze time so a squad reading this document alone (the entire point
+of freezing it) doesn't need to read `vg-core`'s source to know their shape.
+
+```rust
+/// Hints a caller can supply about an artefact before/without parsing it.
+pub struct ArtefactHint { pub path: Option<PathBuf>, pub language_id: Option<String>, pub mime_type: Option<String> }
+
+/// The structural kind a Parser determines an artefact to be. `#[non_exhaustive]`.
+pub enum ArtefactKind {
+    Json, Yaml, Toml, Sql, Csv, LogLine, Diff, EnvFile,
+    SourceCode(String), PlainText, Unknown,
+}
+
+/// Structural context a Parser attaches to a Span. `#[non_exhaustive]`.
+pub enum NodeKind { Key, Value, Field(String), StringLiteral, Comment, Identifier, Other(String) }
+
+/// Raw bytes plus whatever hint the caller already has about their shape.
+pub struct Input { pub buf: Vec<u8>, pub hint: ArtefactHint }
+
+/// The detectors and parsers `scan` runs, borrowed as trait objects so `vg-core` never
+/// depends on the Wave B crates that implement them.
+pub struct Context<'a> { pub parsers: &'a [&'a dyn Parser], pub detectors: &'a [&'a dyn Detector] }
+
+/// A resolved policy plus the vault/audit handles `mask` needs.
+pub struct Policy { pub engine: Box<dyn PolicyEngine>, pub vault: Box<dyn VaultStore>, pub audit: Box<dyn AuditSink> }
+
+/// Where a (un)masked value is headed. `#[non_exhaustive]`.
+pub enum Destination { LocalPatch, LocalTestFixture, LocalExplanationBuffer, RemoteModelPrompt, ObservabilitySink }
+
+/// Stable key for PolicyEngine::destination_allows_masked_only lookups — a separate type
+/// from Destination since policy dictionaries key on a stable string, not the runtime enum.
+pub struct DestinationId(pub String);
+
+/// Who is requesting a demask, checked by PolicyEngine::demask_allowed.
+pub struct Actor { pub id: ActorId, pub roles: Vec<String> }
+
+/// A seeded evaluation corpus for `benchmark` (Task T10 populates real corpora).
+pub struct Corpus { pub samples: Vec<CorpusSample> }
+pub struct CorpusSample { pub input: Input, pub expected_findings: Vec<Finding> }
+
+/// Go/No-Go metrics, per agent-factory-plan.md §8.
+pub struct Metrics { pub recall: f64, pub precision: f64, pub false_positive_rate: f64, pub p95_latency_us: u64 }
+```
+
+---
+
 ## 1. Shared types (owned by `vg-core`)
 
 ```rust
-/// Classification of a detected entity.
+/// Classification of a detected entity. `#[non_exhaustive]`.
 pub enum EntityType {
     Person, Email, Phone, Address, Postcode,
     EmployeeId, CustomerId, AccountId, Iban, SortCode,
     InternalIp, Hostname, ApiKey, TraceId,
     Password, PrivateKey, Secret, AccessToken,
-    // extensible via policy dictionaries
+    Custom(String), // a policy-dictionary-defined class; only genuinely new
+                     // *fixed* classes need a contract-change PR, dictionary
+                     // entries do not
 }
 
 /// What the policy says to do with a class of entity/artefact.
@@ -55,7 +106,7 @@ pub struct MappingRef(pub Uuid);      // handle only; never the value
 pub struct AuditEvent { /* see vg-audit contract */ }
 ```
 
-**Invariant (tested):** `MaskedPack` must never contain a raw detected value or a vault key. Squad 5/7 add a property test.
+**Invariant (tested, not type-enforced):** `MaskedPack` must never contain a raw detected value or a vault key in `.text` or `.policy_version`. This is a testing/convention discipline, not a type-system guarantee — every field is `pub` with no smart constructor, so nothing stops code from hand-constructing one directly. `MappingRef` being an opaque `Uuid` (never a real key) makes the "no vault key" half true by construction; "no raw value" depends on `mask()`'s correctness and test coverage (`vg_core::conformance::assert_masked_pack_excludes_raw_values`). Squad 5/7 add a property test.
 
 ---
 
@@ -87,7 +138,7 @@ pub trait Detector: Send + Sync {
     fn entity_types(&self) -> &[EntityType];
 }
 ```
-Contract: deterministic; bounded matching; `detect` is benchmarked (p95 < 25 ms on the reference buffer). Warm-path NER (GLiNER) implements a separate `Enricher` trait, never `Detector`, and is only invoked off the hot path.
+Contract: deterministic; bounded matching; every returned `Span` must be a valid byte range into the input buffer (`start <= end <= buf.len()`) — later pipeline code slices by these spans; `detect` is benchmarked (p95 < 25 ms on the reference buffer). Warm-path NER (GLiNER) implements a separate `Enricher` trait, never `Detector`, and is only invoked off the hot path. `vg_core::conformance::assert_detector_contract` checks determinism, declared-type membership, confidence range, and span bounds.
 
 ```rust
 pub trait Enricher: Send + Sync {            // WARM PATH ONLY
@@ -108,7 +159,7 @@ pub trait Parser: Send + Sync {
 
 pub struct ParseResult { pub spans: Vec<Span>, pub artefact_kind: ArtefactKind }
 ```
-Contract: must be robust to malformed input (return best-effort spans, never panic). Code parsing uses tree-sitter; format parsers for json/yaml/toml/sql/csv/log/diff/env.
+Contract: must be robust to malformed input (return best-effort spans, never panic). Code parsing uses tree-sitter; format parsers for json/yaml/toml/sql/csv/log/diff/env. `vg_core::conformance::assert_parser_never_panics` checks this against whatever buffers the caller supplies — the helper itself can't verify panic-safety in general, so exercise it with genuinely adversarial input (empty, truncated UTF-8, unbalanced delimiters), not just one happy-path buffer.
 
 ---
 
@@ -130,6 +181,10 @@ pub struct Secret(/* zeroized on drop */);
 ```
 Contract: AES-256 at rest (SQLCipher); DB key wrapped by OS keychain, never persisted plaintext; `Secret` zeroizes on drop; `IrreversibleRedact` values are **never** passed to `intern`. Stable placeholder via salted HMAC over `(canonical(value), ty, ns)`.
 
+**Namespace isolation is part of this contract, not a convention:** `ns` in `resolve` must match the `ns` the `Placeholder` was interned under. A value interned in one `Namespace` must never resolve when called with a different one — return `VaultError::NotFound` on a namespace mismatch, the same as an unknown mapping (never distinguish "wrong namespace" from "doesn't exist" to a caller). `vg_core::conformance::assert_vault_roundtrip` checks this explicitly; any impl, including test mocks, must not skip it. (Found and fixed at freeze time: the T02 conformance example's mock vault originally ignored `ns` on resolve entirely.)
+
+**`Secret`'s zeroize-on-drop is cosmetic at the one exit point that matters:** `expose_secret(&self) -> &str` lets a caller copy the value out before drop, and `rehydrate`'s frozen signature (§2) returns an owned, non-zeroizing `String` for the allowed-destination path. This is inherent to the contract's shape, not an implementation bug — callers of `expose_secret`/`rehydrate`'s output are responsible for not persisting or logging the returned value.
+
 ---
 
 ## 6. Policy trait (implemented by `vg-policy`)
@@ -144,9 +199,11 @@ pub trait PolicyEngine: Send + Sync {
     fn version(&self) -> &str;
 }
 
-pub struct PolicyLayers { pub global: Path, pub repo: Option<Path>, pub session: Option<Path> }
+pub struct PolicyLayers { pub global: PathBuf, pub repo: Option<PathBuf>, pub session: Option<PathBuf> }
 ```
-Contract: 3-layer resolution (session overrides repo overrides global); signed-pack verification before load (stub in Phase 1, enforced later); `demask_allowed` returns false for `RemoteModelPrompt`/`ObservabilitySink` in default policy.
+Contract: 3-layer resolution (session overrides repo overrides global); signed-pack verification before load (stub in Phase 1, enforced later); `demask_allowed` returns false for `RemoteModelPrompt`/`ObservabilitySink` in default policy — checked by `vg_core::conformance::assert_policy_engine_denies_hard_deny_destinations`.
+
+*(Fixed at freeze time: the draft used `Path`, which isn't valid here — `Path` is `?Sized` and can't be an owned struct field. `PathBuf` is what the actual code needed and uses.)*
 
 ---
 
@@ -168,7 +225,7 @@ pub enum AuditEvent {
     // ... provider destination, build_provenance_version
 }
 ```
-Contract: append-only; **no raw values** in any variant (refs/counts/versions only); property-tested.
+Contract: append-only; **no raw values** in any variant (refs/counts/versions only); property-tested via `vg_core::conformance::assert_audit_event_excludes_raw_values`, which checks both the literal raw value and its `Debug`-escaped form (a raw value containing control characters renders escaped in `{event:?}`, so checking only the unescaped literal would false-negative on exactly that class of leak).
 
 ---
 
@@ -182,5 +239,5 @@ Contract: append-only; **no raw values** in any variant (refs/counts/versions on
 ---
 
 ## Versioning
-- **v1** — this document, frozen at end of Wave A.
+- **v1** — this document, frozen 2026-07-15 (Task T02), reconciled against the actual `vg-core` code at freeze time. See `../decisions.md`'s 2026-07-15 entry for what changed between the original draft and this frozen version (added §0 supporting types; `EntityType::Custom`; `PolicyLayers` `Path`→`PathBuf`; namespace-isolation and zeroize-cosmetic notes on `VaultStore`/`Secret`; conformance-helper coverage notes).
 - Increment on any breaking change to a public type/trait above. Record the bump in `../decisions.md` and notify downstream squads.

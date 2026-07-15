@@ -238,3 +238,139 @@ that loop until an adversarial review asked "does this script still lie about wh
 Second, a fix session can introduce its own overclaim while correcting someone else's — the
 "T01 is merged" line proves that doubt-driven-development needs to re-examine its own prior
 output, not just the original artifact, on each cycle.
+
+## 2026-07-15 - Task T02: vg-core's shared types, trait seams, and conformance stubs
+
+### Context
+
+With T01 merged, T02 (Squad 0) was next: freeze `vg-core`'s shared types and library API,
+define the trait seams every Wave B crate implements against, and provide contract-conformance
+test stubs — per `docs/architecture/interface-contracts.md` and `T02.md`'s acceptance
+("interface-contracts.md v1 frozen; types compile; conformance test scaffold exists").
+
+### What happened with the dispatch
+
+Retried the real ACT GO-LIVE dispatch mechanism (`dag dispatch T02`) rather than building
+directly from the start, since T01's stall was specifically triggered by a stale-toolchain
+Bash check that no longer exists. First attempt failed on a transient API connection error
+("Connection closed mid-response") — not the same permission-mode issue as T01. Second attempt
+ran for the full tool timeout (~10 minutes) and was killed mid-run — but unlike T01, this was
+genuine progress being cut short, not an instant stall: the worktree
+(`engine-gateway-lab/.worktrees/run-20260715-T02`) had 7 new files and 787 lines of real Rust
+written (`types.rs`, `traits.rs`, `api.rs`, `error.rs`, `ids.rs`, `audit.rs`, `conformance.rs`,
+plus `tests/conformance_stubs.rs`), with no still-running process and no further file changes —
+consistent with the work having actually finished writing but the outer process being killed
+before the adapter's trailing steps (verify, output-artifact write, ACT session close) could run.
+
+### Decision
+
+Picked up the work in place rather than re-dispatching from scratch (which would have discarded
+real, substantial progress) or discarding it. Verified it independently before trusting it:
+`cargo build` (needed to update `Cargo.lock` for three new dependencies — `thiserror`, `uuid`,
+`zeroize` — that `--locked` alone can't add), then the actual T02 `verify_command` — `cargo build
+--locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check && cargo test` — which
+passed clean after one `cargo fmt --all` pass (the interrupted run hadn't reached the formatting
+step). Read the generated code directly (not just trusted the test pass) given this is the
+*frozen* interface contract every later task builds against — found it faithfully matches
+`interface-contracts.md`: `Secret` zeroizes on drop with a redacting `Debug` impl; `rehydrate`'s
+destination hard-deny gate (`RemoteModelPrompt`/`ObservabilitySink`, regardless of actor) is
+implemented for real, not stubbed, since correctly identified as the one piece of T02 logic that
+doesn't depend on any Wave B crate; everything else pipeline-related is an explicit `todo!()`
+naming the task that wires it (T07/T09/T10), not a silently-incomplete stub.
+
+### Consequences
+
+- This is the second piece of VeilGremlin's real business logic (after T01's empty scaffold) and
+  the first real security-relevant invariant with a test proving it.
+- T01 + T02 both need to merge before Wave B (five parallel squads) can dispatch, per
+  `agent-factory-plan.md`.
+- Not yet run: a doubt-driven-development pass on this PR. T01 got two rounds before merging;
+  given `rehydrate`'s hard-deny logic is genuinely security-relevant (not just scaffolding),
+  the same discipline probably applies here — left as an explicit next action, not assumed.
+
+## 2026-07-15 - Doubt-driven-development on the T02 PR: contract left in DRAFT, a real vault bug
+
+### Context
+
+Ran the same two-round process as T01 (single-model fresh-context review, then Codex
+cross-model) against the T02 PR before merging, given `rehydrate`'s hard-deny gate and the
+vault/audit conformance helpers are genuinely security-relevant, not just scaffolding.
+
+### Findings and disposition
+
+- **Confirmed, fixed — the most severe finding:** `docs/architecture/interface-contracts.md`
+  was never touched by this PR, despite T02's literal acceptance criterion being "interface-
+  contracts.md v1 frozen." The doc still read "Status: DRAFT until end of Wave A (Task T02),
+  then FROZEN" in present tense. Worse, its illustrative code never defined at least 11 types
+  the actual implementation needed and had to invent (`ArtefactHint`, `ArtefactKind`,
+  `NodeKind`, `Destination`, `DestinationId`, `Context`, `Input`, `Policy`, `Actor`, `Corpus`,
+  `CorpusSample`, `Metrics`), and had two concrete deviations from the real code:
+  `EntityType::Custom(String)` wasn't in the doc's literal enum, and `PolicyLayers` used the
+  doc's literal `Path` — which isn't valid Rust for an owned field (`Path` is `?Sized`) — where
+  the real code correctly used `PathBuf`. The entire point of freezing this document is so Wave
+  B squads can build in parallel without reading each other's (or `vg-core`'s) internals; a
+  document that's still in draft with 11 missing types defeats that purpose. Fixed: added a new
+  §0 (supporting types), reconciled every deviation, flipped Status to FROZEN with today's date,
+  and updated the Versioning section to record what changed at freeze time — all in this same
+  PR, since nothing has consumed the "frozen" contract yet (Wave B hasn't dispatched), so a
+  separate contract-change PR would have been process for its own sake.
+- **Confirmed, fixed — the most severe *code* finding:** `MockVault::resolve` in
+  `conformance_stubs.rs` **ignored its `ns` parameter entirely** (it was already prefixed
+  `_ns`) — a value interned under one `Namespace` would resolve successfully under any other
+  namespace. `interface-contracts.md`'s own `Namespace` design exists specifically to scope
+  placeholder stability per session/repo/org; silently ignoring that on resolve is a real
+  security-relevant defect in the template every Wave B squad (specifically `vg-vault`, Task
+  T05) will read as the reference shape. Fixed: `MockVault` now stores the namespace alongside
+  each mapping and returns `VaultError::NotFound` on a namespace mismatch (indistinguishable
+  from "doesn't exist" to the caller, per the now-documented contract); `VaultStore`'s trait
+  doc and `interface-contracts.md` §5 both now state namespace isolation as an explicit,
+  required invariant, not an implied one; `assert_vault_roundtrip` now takes a second,
+  distinct namespace and asserts cross-namespace resolution fails.
+- **Confirmed, fixed:** no reusable `PolicyEngine` conformance helper existed — the hard-deny
+  check was only an ad-hoc inline test in `conformance_stubs.rs`, not part of
+  `vg_core::conformance` the way every other trait's check was. Added
+  `assert_policy_engine_denies_hard_deny_destinations`; the existing test now calls it.
+- **Confirmed, fixed:** `assert_audit_event_excludes_raw_values` checked only the literal raw
+  string against `{event:?}`'s output — a raw value containing control characters (e.g. a
+  newline) renders `Debug`-escaped, so the unescaped literal search would false-negative on
+  exactly that leak. Fixed to also check the value's escaped form.
+- **Confirmed, fixed:** `assert_masked_pack_excludes_raw_values` only checked `.text`, not
+  `.policy_version` (also a `String` field the contract's invariant covers). Fixed; documented
+  that `mapping_refs` needs no check since `MappingRef` is type-enforced to hold only an opaque
+  `Uuid`, never a real key.
+- **Confirmed, fixed:** `assert_detector_contract` didn't validate that returned `Span`s are
+  in-bounds (`start <= end <= buf.len()`) — later pipeline code slices by these spans, so an
+  out-of-bounds span from a "conformant" detector is a real latent panic/bug source downstream.
+  Added the bounds check.
+- **Confirmed, fixed:** every conformance helper required `T: Sized` (e.g. `D: Detector`), but
+  the library API holds detectors/parsers/vault/audit as trait objects (`Context`, `Policy`) —
+  a Wave B crate testing a `Box<dyn Detector>` registry couldn't call these helpers without
+  extra wrapper plumbing. Relaxed every bound to `?Sized`.
+- **Confirmed, fixed (documentation, not a code change):** the parser conformance test used a
+  `MockParser` that can never panic by construction, so it only proved the harness call itself
+  didn't crash, not that any real parser is panic-safe. Added a second test running the helper
+  against a small battery of adversarial buffers (empty, invalid UTF-8, large/unbalanced) and a
+  doc comment on `assert_parser_never_panics` warning that a trivial mock proves nothing about
+  a real implementation — squads copying the template need their own equivalent battery against
+  actual parsing logic.
+- **Confirmed, documented as an inherent contract limitation, not fixed as a bug (matches T01's
+  precedent for exactly this class of finding):** `Secret::expose_secret() -> &str` lets a
+  caller copy the value out before `Drop` zeroizes it, and `rehydrate`'s own frozen signature
+  (`-> Result<String, RehydrateDenied>`) requires returning an owned, non-zeroizing `String` at
+  the one exit point that matters — so the zeroize-on-drop guarantee is cosmetic by the
+  contract's own shape, not something T02 introduced. Documented explicitly in `traits.rs`,
+  `types.rs` (`MaskedPack`'s doc comment no longer overclaims enforcement it doesn't have
+  either), and `interface-contracts.md` §5, rather than left as a silent gap.
+
+### Why this matters
+
+The standout lesson here is different from T01's: last time, the bugs were in *scaffolding*
+(CI config, docs) — real, but not security-relevant. This time, the most severe finding
+(`MockVault` ignoring namespace) is a template defect in code whose entire purpose is to be
+copied by four future crates, one of which (`vg-vault`) implements the exact trait this bug was
+in. A conformance stub that doesn't test the invariant it's supposed to enforce isn't neutral —
+it's actively worse than no stub, since it gives a false sense that the pattern has been
+validated. The interface-contracts.md gap reinforces a lesson from the v1 phased plan: a
+"frozen" artifact that nobody actually re-reads before building against it (Wave B hasn't
+started yet, so nothing depended on it being current — but soon will) drifts from day one
+unless updating it is part of the same PR that changes what it describes, not a follow-up.

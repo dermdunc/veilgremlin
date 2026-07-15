@@ -156,3 +156,64 @@ agent_runs:
       - "Branch name (gateway/run-20260714-T01) never matched agent-factory-plan.md's feat/<squad>-<task-id>-<slug> convention -- flagged, not fixed (already merged now, moot going forward for this branch but the dispatch tooling's naming convention still doesn't match VeilGremlin's own git contract for future tasks)."
     next_actions:
       - "Human: dispatch/build T02 (freeze vg-core's shared types + interface-contracts.md v1) -- Wave B doesn't start until T01 and T02 both merge; consider whether engine-gateway-lab/agentic-control-tower's branch-naming convention should be reconciled with agent-factory-plan.md's before T02 dispatches."
+  - id: RUN-0005
+    date: 2026-07-15
+    agent: "claude (interactive session)"
+    role: "Build Agent"
+    intent: "Build Task T02 (freeze vg-core's shared types, trait seams, contract-conformance test stubs). Real ACT dispatch this time did genuine work but was cut short by a tool timeout before closing out formally; picked up and verified the interrupted work in place rather than re-dispatching or discarding it."
+    autonomy_level: 3
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    files_touched:
+      - "crates/vg-core/Cargo.toml"
+      - "crates/vg-core/src/lib.rs"
+      - "crates/vg-core/src/api.rs"
+      - "crates/vg-core/src/audit.rs"
+      - "crates/vg-core/src/conformance.rs"
+      - "crates/vg-core/src/error.rs"
+      - "crates/vg-core/src/ids.rs"
+      - "crates/vg-core/src/traits.rs"
+      - "crates/vg-core/src/types.rs"
+      - "crates/vg-core/tests/conformance_stubs.rs"
+      - "Cargo.lock"
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"
+    validation:
+      - "cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check && cargo test (T02's own verify_command): PASS, 6 tests green"
+      - "Read the generated code directly against interface-contracts.md before trusting the test pass, given this is the frozen contract every later task builds against — confirmed Secret zeroizes on drop with a redacting Debug impl, and rehydrate's destination hard-deny gate is real logic (not a stub), correctly scoped to the one piece of T02 that doesn't depend on any Wave B crate"
+    risks:
+      - "No doubt-driven-development pass run yet on this PR — T01 got two rounds before merging; rehydrate's hard-deny gate is real security-relevant logic, so the same discipline probably applies. Left as an explicit next action, not skipped silently."
+      - "Branch-naming mismatch (same as T01) still unresolved."
+    next_actions:
+      - "Human: review/merge the T02 PR."
+      - "Human: decide on a doubt-driven-development pass for T02."
+      - "Once T01 + T02 both merge: batch-dispatch Wave B (T03/T04, T05, T05b, T06, T08)."
+  - id: RUN-0006
+    date: 2026-07-15
+    agent: "claude (fresh-context review) + codex (cross-model review) + claude (fix)"
+    role: "Build Agent"
+    intent: "Two-round doubt-driven-development on the T02 PR (single-model then Codex cross-model), then fix every confirmed finding: interface-contracts.md never frozen/reconciled (11 missing types, 2 deviations), MockVault ignoring namespace on resolve, 6 more conformance-helper gaps, 1 documented contract-shape limitation."
+    autonomy_level: 3
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    files_touched:
+      - "docs/architecture/interface-contracts.md"
+      - "crates/vg-core/src/traits.rs"
+      - "crates/vg-core/src/types.rs"
+      - "crates/vg-core/src/conformance.rs"
+      - "crates/vg-core/tests/conformance_stubs.rs"
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"
+    validation:
+      - "cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check && cargo test: PASS, 7 tests green (was 6 -- added cross-namespace-rejection coverage and adversarial-buffer parser battery)"
+    risks:
+      - "None new. The vault namespace-isolation bug is now caught by a passing test rather than silently absent."
+    next_actions:
+      - "Human: review/merge the T02 PR."
+      - "Once T01 + T02 both merge: batch-dispatch Wave B (T03/T04, T05, T05b, T06, T08)."

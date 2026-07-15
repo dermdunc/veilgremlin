@@ -236,4 +236,88 @@ Branch name (gateway/run-20260714-T01) never matched agent-factory-plan.md's fea
 
 ### Next Actions
 
-- [ ] Human: dispatch/build T02 (freeze vg-core's shared types + interface-contracts.md v1) -- Wave B doesn't start until T01 and T02 both merge; consider whether engine-gateway-lab/agentic-control-tower's branch-naming convention should be reconciled with agent-factory-plan.md's before T02 dispatches.
+- [x] Dispatch/build T02 — done 2026-07-15.
+
+---
+
+## Session: T02 built (real dispatch, picked up after a tool timeout)
+
+**Date:** 2026-07-15
+
+### What Changed
+
+Retried the real ACT GO-LIVE dispatch for T02. First attempt hit a transient API connection
+error; second attempt actually did the real work (7 new files, 787 lines: `vg-core`'s shared
+types, trait seams, `rehydrate`'s hard-deny gate implemented for real, contract-conformance
+test helpers + worked example) but was killed by a ~10-minute tool timeout before it could
+close out formally — no stall this time, genuine progress cut short. Picked up in place: ran
+`cargo build` to lock the 3 new dependencies (`thiserror`, `uuid`, `zeroize`), applied `cargo
+fmt --all` (the interrupted run hadn't reached formatting), then verified the actual T02
+`verify_command` end to end — all green, including 6 real tests.
+
+### Decisions
+
+Continued the interrupted work rather than re-dispatching from scratch or discarding it —
+verified independently (build, clippy, fmt, test, plus reading the actual generated code
+against `interface-contracts.md`) before trusting it, given this is the frozen contract every
+later task builds against.
+
+### Assumptions
+
+None new.
+
+### Risks
+
+None new. Branch-naming mismatch (same issue as T01) still unresolved — see decisions.md.
+
+### Next Actions
+
+- [x] Doubt-driven-development pass — done 2026-07-15, see below.
+- Human: review/merge the T02 PR.
+- Once T01 + T02 both merge: batch-dispatch Wave B (T03/T04, T05, T05b, T06, T08).
+
+### Validation status
+
+- `cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check &&
+  cargo test` (T02's own verify_command): PASS, 6 tests green.
+
+---
+
+## Session: Doubt-driven-development on T02 (two rounds) + fixes
+
+**Date:** 2026-07-15
+
+### What Changed
+
+Ran the same two-round process as T01 (single-model, then Codex cross-model) against the T02
+PR. Most severe finding: `interface-contracts.md` was never touched despite being T02's literal
+acceptance criterion, still read "DRAFT," and was missing 11 types the real code needed. Most
+severe *code* finding: the conformance example's `MockVault::resolve` ignored its namespace
+parameter entirely — a value interned under one namespace would resolve under any other. Fixed
+both, plus five more conformance-helper gaps (no `PolicyEngine` helper, an audit-escaping
+false-negative, `MaskedPack`'s check missing a field, missing span-bounds validation, `Sized`
+bounds blocking `dyn Trait` callers) and one documented-not-fixed contract-shape limitation
+(`Secret`'s zeroize-on-drop is cosmetic given `rehydrate`'s own frozen return type).
+
+### Decisions
+
+Reconciled `interface-contracts.md` in the same PR rather than a separate contract-change PR,
+since nothing has consumed the "frozen" contract yet (Wave B hasn't dispatched) — see
+decisions.md for the full record and rationale on each fix.
+
+### Risks
+
+None new. The vault namespace-isolation bug is now caught by a passing test
+(`assert_vault_roundtrip` requires a second, distinct namespace and asserts cross-namespace
+resolution fails) rather than silently absent.
+
+### Next Actions
+
+- Human: review/merge the T02 PR (both interface-contracts.md and the code fixes are now in it).
+- Once T01 + T02 both merge: batch-dispatch Wave B.
+
+### Validation status
+
+- `cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check &&
+  cargo test`: PASS, 7 tests green in `vg-core` (was 6 — added the cross-namespace-rejection
+  coverage and the adversarial-buffer parser battery).

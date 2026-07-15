@@ -57,9 +57,21 @@ Repo source-of-truth for the work queue. Tasks T01–T11 are defined in [`archit
       versions that would drift on a workspace version bump, and — ironically — a "T01 is
       merged" overclaim introduced by round 1's own project-walkthrough.md fix (the PR isn't
       merged yet). All fixed; see `docs/decisions.md` for the full record.
-- [ ] **Human: review and merge the T01 PR** (github.com/dermdunc/veilgremlin/pull/2) — CI is
-      green; two doubt-driven-development passes have run against it.
-- [ ] **T02** — Freeze shared types + library API in `vg-core`; finalise `architecture/interface-contracts.md` v1 — *Squad 0*
+- [x] **T01 PR merged, 2026-07-14** (github.com/dermdunc/veilgremlin/pull/2), plus its
+      session-closeout PR #3.
+- [x] **T02 — done, 2026-07-15.** Freeze shared types + library API in `vg-core`; trait seams
+      (`Detector`, `Parser`, `VaultStore`, `PolicyEngine`, `AuditSink`); contract-conformance
+      test helpers (`vg_core::conformance`) + a full worked example against mock impls
+      (`crates/vg-core/tests/conformance_stubs.rs`). Real dispatch this time actually built the
+      code (unlike T01's stall) but hit a ~10-minute tool timeout before it could close out
+      formally — picked up the work in place: it compiled clean, and `rehydrate`'s
+      destination hard-deny gate (`RemoteModelPrompt`/`ObservabilitySink`, regardless of
+      actor) is real logic, not a stub, since it doesn't depend on any Wave B crate. Everything
+      else (`scan`/`mask`/`benchmark`, `rehydrate`'s allowed-destination path) is `todo!()`
+      pointing at the task that wires it (T07/T09/T10), matching `interface-contracts.md`'s own
+      note that Phase 1 pipeline assembly happens later. Full T02 verify_command passes:
+      `cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check
+      && cargo test` (6 real tests, all green).
 
 ## This Week (Wave B — dispatch in parallel once T01+T02 merge)
 
@@ -83,4 +95,16 @@ Repo source-of-truth for the work queue. Tasks T01–T11 are defined in [`archit
 
 ## Session Update: 2026-07-14 — T01 built + two doubt-driven-development rounds + PR merged
 
-- [ ] Human: dispatch/build T02 (freeze vg-core's shared types + interface-contracts.md v1) -- Wave B doesn't start until T01 and T02 both merge; consider whether engine-gateway-lab/agentic-control-tower's branch-naming convention should be reconciled with agent-factory-plan.md's before T02 dispatches.
+- [x] Dispatch/build T02 — done 2026-07-15, see the Wave A entry above.
+
+## Session Update: 2026-07-15 — T02 built
+
+- [ ] Human: review/merge the T02 PR.
+- [ ] Human: decide on a doubt-driven-development pass for T02 (T01 got two rounds before
+      merging — same discipline should probably apply here, especially since `rehydrate`'s
+      hard-deny gate is real security-relevant logic, not a stub).
+- [ ] Once T01 + T02 are both merged, batch-dispatch the five Wave B squads (T03/T04, T05,
+      T05b, T06, T08).
+- [ ] Still open: the branch-naming mismatch between the ACT/engine-gateway dispatch
+      tooling's convention and `agent-factory-plan.md`'s `feat/<squad>-<task-id>-<slug>`
+      convention (flagged, not fixed, since T01).

@@ -236,4 +236,48 @@ Branch name (gateway/run-20260714-T01) never matched agent-factory-plan.md's fea
 
 ### Next Actions
 
-- [ ] Human: dispatch/build T02 (freeze vg-core's shared types + interface-contracts.md v1) -- Wave B doesn't start until T01 and T02 both merge; consider whether engine-gateway-lab/agentic-control-tower's branch-naming convention should be reconciled with agent-factory-plan.md's before T02 dispatches.
+- [x] Dispatch/build T02 — done 2026-07-15.
+
+---
+
+## Session: T02 built (real dispatch, picked up after a tool timeout)
+
+**Date:** 2026-07-15
+
+### What Changed
+
+Retried the real ACT GO-LIVE dispatch for T02. First attempt hit a transient API connection
+error; second attempt actually did the real work (7 new files, 787 lines: `vg-core`'s shared
+types, trait seams, `rehydrate`'s hard-deny gate implemented for real, contract-conformance
+test helpers + worked example) but was killed by a ~10-minute tool timeout before it could
+close out formally — no stall this time, genuine progress cut short. Picked up in place: ran
+`cargo build` to lock the 3 new dependencies (`thiserror`, `uuid`, `zeroize`), applied `cargo
+fmt --all` (the interrupted run hadn't reached formatting), then verified the actual T02
+`verify_command` end to end — all green, including 6 real tests.
+
+### Decisions
+
+Continued the interrupted work rather than re-dispatching from scratch or discarding it —
+verified independently (build, clippy, fmt, test, plus reading the actual generated code
+against `interface-contracts.md`) before trusting it, given this is the frozen contract every
+later task builds against.
+
+### Assumptions
+
+None new.
+
+### Risks
+
+None new. Branch-naming mismatch (same issue as T01) still unresolved — see decisions.md.
+
+### Next Actions
+
+- Human: review/merge the T02 PR.
+- Human: decide on a doubt-driven-development pass for T02 before merging (same discipline as
+  T01's two rounds — `rehydrate`'s hard-deny gate is real security logic, not just scaffolding).
+- Once T01 + T02 both merge: batch-dispatch Wave B (T03/T04, T05, T05b, T06, T08).
+
+### Validation status
+
+- `cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check &&
+  cargo test` (T02's own verify_command): PASS, 6 tests green.

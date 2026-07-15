@@ -90,3 +90,22 @@ changes:
       status: not_required
     links:
       - "docs/session-log.md"
+
+  - id: CHG-0005
+    date: 2026-07-15
+    title: "Task T02: vg-core shared types, trait seams, contract-conformance stubs"
+    intent: "Freeze vg-core's shared types and library API; define trait seams (Detector, Parser, VaultStore, PolicyEngine, AuditSink); provide contract-conformance test helpers for Wave B squads. Real dispatch this time did genuine work but was cut short by a tool timeout before closing out; picked up and independently verified in place rather than re-dispatched or discarded."
+    changed_by: "human + claude (interactive session)"
+    change_type: build
+    risk_level: medium
+    validation:
+      - "cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check && cargo test: PASS, 6 tests green"
+      - "Generated code read directly against interface-contracts.md before trusting it (frozen contract every later task builds against)"
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    links:
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"

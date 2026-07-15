@@ -238,3 +238,52 @@ that loop until an adversarial review asked "does this script still lie about wh
 Second, a fix session can introduce its own overclaim while correcting someone else's — the
 "T01 is merged" line proves that doubt-driven-development needs to re-examine its own prior
 output, not just the original artifact, on each cycle.
+
+## 2026-07-15 - Task T02: vg-core's shared types, trait seams, and conformance stubs
+
+### Context
+
+With T01 merged, T02 (Squad 0) was next: freeze `vg-core`'s shared types and library API,
+define the trait seams every Wave B crate implements against, and provide contract-conformance
+test stubs — per `docs/architecture/interface-contracts.md` and `T02.md`'s acceptance
+("interface-contracts.md v1 frozen; types compile; conformance test scaffold exists").
+
+### What happened with the dispatch
+
+Retried the real ACT GO-LIVE dispatch mechanism (`dag dispatch T02`) rather than building
+directly from the start, since T01's stall was specifically triggered by a stale-toolchain
+Bash check that no longer exists. First attempt failed on a transient API connection error
+("Connection closed mid-response") — not the same permission-mode issue as T01. Second attempt
+ran for the full tool timeout (~10 minutes) and was killed mid-run — but unlike T01, this was
+genuine progress being cut short, not an instant stall: the worktree
+(`engine-gateway-lab/.worktrees/run-20260715-T02`) had 7 new files and 787 lines of real Rust
+written (`types.rs`, `traits.rs`, `api.rs`, `error.rs`, `ids.rs`, `audit.rs`, `conformance.rs`,
+plus `tests/conformance_stubs.rs`), with no still-running process and no further file changes —
+consistent with the work having actually finished writing but the outer process being killed
+before the adapter's trailing steps (verify, output-artifact write, ACT session close) could run.
+
+### Decision
+
+Picked up the work in place rather than re-dispatching from scratch (which would have discarded
+real, substantial progress) or discarding it. Verified it independently before trusting it:
+`cargo build` (needed to update `Cargo.lock` for three new dependencies — `thiserror`, `uuid`,
+`zeroize` — that `--locked` alone can't add), then the actual T02 `verify_command` — `cargo build
+--locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check && cargo test` — which
+passed clean after one `cargo fmt --all` pass (the interrupted run hadn't reached the formatting
+step). Read the generated code directly (not just trusted the test pass) given this is the
+*frozen* interface contract every later task builds against — found it faithfully matches
+`interface-contracts.md`: `Secret` zeroizes on drop with a redacting `Debug` impl; `rehydrate`'s
+destination hard-deny gate (`RemoteModelPrompt`/`ObservabilitySink`, regardless of actor) is
+implemented for real, not stubbed, since correctly identified as the one piece of T02 logic that
+doesn't depend on any Wave B crate; everything else pipeline-related is an explicit `todo!()`
+naming the task that wires it (T07/T09/T10), not a silently-incomplete stub.
+
+### Consequences
+
+- This is the second piece of VeilGremlin's real business logic (after T01's empty scaffold) and
+  the first real security-relevant invariant with a test proving it.
+- T01 + T02 both need to merge before Wave B (five parallel squads) can dispatch, per
+  `agent-factory-plan.md`.
+- Not yet run: a doubt-driven-development pass on this PR. T01 got two rounds before merging;
+  given `rehydrate`'s hard-deny logic is genuinely security-relevant (not just scaffolding),
+  the same discipline probably applies here — left as an explicit next action, not assumed.

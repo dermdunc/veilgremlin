@@ -10,3 +10,6 @@ description = "VeilGremlin shared types and library API (scan/mask/rehydrate/ben
 workspace = true
 
 [dependencies]
+thiserror = "1"
+uuid = { version = "1", features = ["v4"] }
+zeroize = "1"

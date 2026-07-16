@@ -74,3 +74,42 @@ worked around for T03, not fixed at the root.
 - [ ] Note for a future mirror-sync session: this mirror was found missing T02's entire
       session entry before this update (pre-existing drift, not introduced this session) --
       flagged rather than silently backfilled.
+
+## Session: Fan-out testing-strategy review + real CI latency gate + Codex dogfooding plan + real detector census
+
+**Date:** 2026-07-16
+
+### What Changed
+
+Merged T03's PR and `engine-gateway-lab`'s RISK-0017 PR. Reviewed the fan-out phases
+against VeilGremlin's actual goal (invisible PII masking, trading-system latency
+discipline) and found 3 real testing-strategy gaps: T04/T08 had no requirement to
+integration-test against T03's real `Finding`/`Span` output (mocks only), and T09 had no
+point where a human confirms the "invisible control" goal is actually met. Added a real,
+CI-enforced latency-regression gate (`tests/latency_gate.rs`) ahead of T10. Ran a Codex
+planning pass (explicitly not a review) on a dogfooding strategy, reconciled in
+`docs/decisions.md`. Built and ran a read-only detector census against 197 real Hekton
+files.
+
+### Decisions
+
+Full record in repo `docs/decisions.md`'s 2026-07-16 entry.
+
+### Assumptions
+
+None beyond what the census run and the manual false-positive verification directly
+showed.
+
+### Risks
+
+Entropy (2468 findings) and phone (783 findings) detectors are dominated by false
+positives on Hekton's own operational-ID and date shapes -- a real, evidenced precision
+problem, not fixed or guessed at this session; needs a human product decision before
+T06/T07.
+
+### Next Actions
+
+- [ ] Human decision needed: how to address the entropy/phone false-positive rate before
+      T06/T07 go live.
+- [ ] Re-run the census as each Wave B/C task lands.
+- [ ] Serial-vs-concurrent decision for the remaining Wave B tasks still open.

@@ -486,3 +486,103 @@ security detector's own documentation can be *wrong* about its own limitations i
 matters: this code's comment said a case was "not attempted" (implying a safe miss) when it was
 actually mishandled (an unsafe partial match) — the fix isn't just adding a feature, it's
 correcting a false safety claim the code made about itself.
+
+## 2026-07-16 - Dogfooding plan (Codex) + a real CI-enforced latency gate + a real detector census
+
+### Context
+
+Reviewed the remaining fan-out (Wave B: T04/T05/T05b/T06/T08; Wave C: T07/T09; Wave D: T10/T11)
+against the product's actual goal — mask PII by design, but be an invisible control with
+trading-system-grade latency discipline (tail-latency awareness and real CI enforcement, not a
+literal microsecond target for a human-interactive hook). Two concerns: the p95 latency budget
+was compile-check-only in CI until T10 wires up baseline management, and each Wave B crate is
+built and tested in isolation against the frozen contract with no cross-crate integration
+exercised until T07, several tasks away.
+
+### Decision 1: a real, CI-enforced latency gate now, not deferred to T10
+
+Added `crates/vg-detectors/tests/latency_gate.rs` — a plain `#[test]` (runs on every PR via the
+existing `cargo test` CI job, zero new CI config) asserting the whole detector suite's p95 stays
+within 4x the interface contract's 25ms budget across 200 iterations. Deliberately coarse: a
+tight bound would be flaky on noisy shared CI runners; this is a regression backstop (catches an
+accidentally-uncompiled regex, a hot-path allocation, an O(n²) detector), not precise tracking —
+Task T10 still owns real p95/p99 baseline management. Independently corroborated by a Codex
+planning pass (below) reaching the identical design ("plain Rust test... not Criterion as the
+hard gate... generous margin") before seeing this implementation.
+
+### Decision 2: cross-crate integration requirements added to Wave B/C task specs now
+
+`.hekton/veilgremlin-dag.toml` (source of truth) and `docs/architecture/work-breakdown.md`
+updated:
+- **T04** (placeholder/HMAC keying) must integration-test against real `Finding`s from
+  `vg-detectors::all_detectors()` (T03, already closed), not only mock values.
+- **T08** (parsers) must integration-test its real `Span` output against
+  `vg-detectors::all_detectors()` on a realistic fixture, and explicitly record whether the fact
+  that all five T03 detectors currently ignore their `spans` parameter (confirmed 2026-07-16,
+  `_spans` in every `detect()` signature) is an accepted stage-appropriate gap or a real one —
+  don't let it go unnoticed until T07.
+- **T09** (CLI/hooks) gained an explicit UX-latency acceptance criterion: a human runs a real
+  interactive session with the hooks wired in and confirms no perceptible friction, recorded
+  honestly in this file — the first point the "invisible control" goal is even testable.
+
+### Decision 3: a Codex planning pass on dogfooding, ahead of implementing any of it
+
+Asked a fresh Codex session (read-only, planning only, no code) to plan how to dogfood VeilGremlin
+incrementally as it's built, rather than only at T10. Its plan (full transcript not reproduced
+here) independently converged on several of the decisions above, and added:
+- The highest cross-crate integration risks beyond T03↔T08: T04↔T05 (placeholder/vault behavioral
+  disagreement — "types compile, behavior disagrees"), T06↔T08 (policy only sees `ArtefactHint`,
+  parser returns `ArtefactKind` — a `.env` file could parse fine and never get blocked until T07
+  notices), T05b↔everything (raw-value leak into audit events).
+- A concrete, immediately-actionable step requiring no new pipeline: a read-only "detector
+  census" — run the already-built `vg-detectors` against real Hekton artifacts to surface real
+  edge cases and real-world latency, years before T10's formal eval harness exists. Explicit
+  design constraint carried into the implementation: never print or store matched values, only
+  counts/spans/detector-IDs/latency/paths.
+- A concrete, Hekton-specific edge-case list the current 5 detectors would plausibly miss:
+  absolute local paths, SSH aliases, API key *variable names* (vs. values), broker-auth token
+  metadata fields, operational IDs (run-IDs, RISK-IDs, branch names — "no detector for factory
+  control-plane identifiers"), hostnames (`EntityType::Hostname` exists in the type system, no
+  detector implements it yet), and commit-SHA/HMAC ambiguity.
+- Its structural recommendation: treat dogfooding and latency discipline as ongoing Wave B/C
+  cross-cutting work, not something T10 owns alone — T10 becomes the *formal* eval harness, not
+  the *first* time real data touches the product.
+
+### Decision 4: ran the census for real — a significant, evidenced precision finding
+
+Built `crates/vg-detectors/examples/census.rs` per the design above and ran it against both
+VeilGremlin's own repo and `engine-gateway-lab`'s (197 files, ~1.1MB, real docs/YAML/logs — not
+synthetic fixtures). Results: 11.2ms total scan time (0.057ms/file average) — confirms the
+detectors are fast on real content, no latency surprise. But the finding-count breakdown is a
+real precision concern, not a synthetic one:
+
+```
+email          findings=12
+entropy        findings=2468   <- dominant, and mostly false positives (see below)
+iban-sortcode  findings=28
+ip             findings=69
+phone          findings=783    <- also mostly false positives (see below)
+```
+
+Manually verified (not via the census tool, which deliberately never surfaces matched text) that
+the entropy detector's dominant hit class is exactly the Codex-predicted "operational IDs" gap:
+Hekton's own `run-YYYYMMDD-EG-NNN` run identifiers (e.g. `run-20260608-EG-012`) are ~19-20 bytes
+of mixed digits/letters/hyphens — precisely the shape `is_token_byte` + the 20-byte floor +
+3.5 bits/byte threshold was tuned to catch for real secrets, with nothing in the current design
+to distinguish "high-entropy secret" from "high-entropy but totally benign structured
+identifier." The phone detector's high count is the already-documented date/ID-as-phone
+ambiguity, now empirically quantified at real scale rather than a single hand-built test case.
+
+**This matters concretely for Task T06 (policy) and T07 (pipeline):** if masking goes live with
+today's detector precision unchanged, the product would redact the overwhelming majority of
+routine operational identifiers, dates, and structured IDs in ordinary agent-factory documents —
+directly working against the "invisible control" goal by making output needlessly noisy. This is
+a genuine design question, not a quick regex fix: whether to (a) add an allowlist/exclusion
+mechanism at the policy layer for known-safe structured shapes, (b) tighten the entropy/phone
+heuristics further (with the same risk/reward trade-offs already documented for T03), or (c)
+accept and formally measure this as part of T10's already-tracked `false_positive_rate` Go/No-Go
+metric. Not decided here — flagged as a real, evidenced open question for whoever builds T06/T07,
+not guessed at. `census.rs` is kept in the repo (an `examples/` binary, not part of the normal
+build/test path) so this can be re-run cheaply as each Wave B/C task lands, per the Codex plan's
+ladder (detector-only now → parser+detector after T08 → stubbed mini-pipeline after
+T04/T05/T06/T05b → real `mask()` after T07 → real dogfood after T09).

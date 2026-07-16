@@ -20,9 +20,9 @@ Companion to `agent-factory-plan.md`. Task IDs are stable references used in bra
 
 | ID | Task | Wave | Owner | Blocks on | Hot path | Acceptance |
 |---|---|---|---|---|---|---|
-| **T03** | Deterministic detectors: compiled regex sets (email/phone/IP/IBAN/sort-code), Aho-Corasick dictionaries, entropy detector | B | Squad 1 | T02 | ✅ | unit tests per detector; bench p95 < 25 ms on reference input |
-| **T04** | Typed-placeholder + HMAC keying: canonicalisation, salted HMAC over `(value,type,namespace)`, per-type ordinals, Luhn/mod-97 checksum validators, session cache | B | Squad 1 + Squad 3 (shared contract) | T02 | ✅ | same value → same placeholder within namespace; checksum tests pass |
-| **T08** | File-aware parsing: logs, git diffs, JSON/YAML, `.env`; tree-sitter for one source language; emit `Span` model to detectors | B | Squad 2 | T02 | partial | parser tests on fixtures; spans typed; error-tolerant on malformed input |
+| **T03** | Deterministic detectors: compiled regex sets (email/phone/IP/IBAN/sort-code), Aho-Corasick dictionaries, entropy detector | B | Squad 1 | T02 | ✅ | unit tests per detector; bench p95 < 25 ms on reference input. Done 2026-07-15: 41 tests, 0.62ms bench, a real CI-enforced latency-regression gate (`tests/latency_gate.rs`, generous CI-safe margin) added 2026-07-16 as a stopgap ahead of T10's precise baseline tracking |
+| **T04** | Typed-placeholder + HMAC keying: canonicalisation, salted HMAC over `(value,type,namespace)`, per-type ordinals, Luhn/mod-97 checksum validators, session cache | B | Squad 1 + Squad 3 (shared contract) | T02 | ✅ | same value → same placeholder within namespace; checksum tests pass. **Added 2026-07-16:** must integration-test against real `Finding`s from `vg-detectors::all_detectors()` (T03, already built), not only mock values — catches a real interface/shape mismatch before T07, not only at it |
+| **T08** | File-aware parsing: logs, git diffs, JSON/YAML, `.env`; tree-sitter for one source language; emit `Span` model to detectors | B | Squad 2 | T02 | partial | parser tests on fixtures; spans typed; error-tolerant on malformed input. **Added 2026-07-16:** must integration-test real `Span` output against `vg-detectors::all_detectors()` (T03) on a realistic fixture — note that all five T03 detectors currently ignore their `spans` parameter entirely (confirmed 2026-07-16); explicitly record whether that's expected at this stage or a gap, don't let it go unnoticed until T07 |
 
 ## Epic E3 — State, policy, evidence (parallel)
 
@@ -37,7 +37,7 @@ Companion to `agent-factory-plan.md`. Task IDs are stable references used in bra
 | ID | Task | Wave | Owner | Blocks on | Hot path | Acceptance |
 |---|---|---|---|---|---|---|
 | **T07** | Masking pipeline in `vg-core`: detectors → policy → vault → masked pack; `.env`/block path; irreversible-redact path; placeholder-consistency validation | C | Squad 0 | T03,T04,T05,T05b,T06,T08 | ✅ | end-to-end mask on fixture; irreversible class never vault-stored; e2e bench |
-| **T09** | `vg` CLI + Claude Code adapter: `run`/`inspect`/`diff --masked`/`demask`/`audit`/`policy`/`vault` commands; hooks (`UserPromptSubmit`/`PreToolUse`/`PostToolUse`) + wrapper; Bedrock masked-request path; pre-send summary; explicit demask gate | C | Squad 6 | T07 | — | masked round trip to Bedrock path; demask gate denies `remote_model_prompt`; CLI help complete |
+| **T09** | `vg` CLI + Claude Code adapter: `run`/`inspect`/`diff --masked`/`demask`/`audit`/`policy`/`vault` commands; hooks (`UserPromptSubmit`/`PreToolUse`/`PostToolUse`) + wrapper; Bedrock masked-request path; pre-send summary; explicit demask gate | C | Squad 6 | T07 | — | masked round trip to Bedrock path; demask gate denies `remote_model_prompt`; CLI help complete. **Added 2026-07-16:** a human runs a real interactive session with the hooks wired in and explicitly confirms no perceptible added latency/friction — the first point the "invisible control" goal is actually testable — recorded in `docs/decisions.md`, not quietly assumed |
 
 ## Epic E5 — Evaluation & gate
 

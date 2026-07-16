@@ -254,3 +254,36 @@ agent_runs:
       - "Human: review/merge the T03 PR once opened."
       - "Decide serial-vs-concurrent for T04/T05/T05b/T06/T08 now that the rework loop and RISK-0016 are both proven for real."
       - "engine-gateway-lab RISK-0017 needs a real fix before the next Wave B tollgate."
+  - id: RUN-0008
+    date: 2026-07-16
+    agent: "claude (interactive session) + codex (planning pass)"
+    role: "Build Agent"
+    intent: "Merged the T03 PR and engine-gateway-lab's RISK-0017 PR; reviewed the fan-out phases against VeilGremlin's actual goal (invisible PII masking, trading-system latency discipline); added a real CI-enforced latency-regression gate ahead of T10; added cross-crate integration acceptance criteria to T04/T08 and a human UX-verification criterion to T09; ran a Codex planning pass (not review) on a dogfooding strategy and reconciled it; built and ran a read-only detector census against 197 real files, surfacing a genuine entropy/phone false-positive precision problem not yet decided."
+    autonomy_level: 3
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    files_touched:
+      - "crates/vg-detectors/tests/latency_gate.rs"
+      - "crates/vg-detectors/examples/census.rs"
+      - "crates/vg-detectors/benches/detectors.rs"
+      - ".hekton/veilgremlin-dag.toml"
+      - ".hekton/build-tasks/T04.md"
+      - ".hekton/build-tasks/T08.md"
+      - ".hekton/build-tasks/T09.md"
+      - "docs/architecture/work-breakdown.md"
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"
+    validation:
+      - "cargo test -p vg-detectors: PASS, including the new latency_gate.rs test (p95 well within the 4x CI-safe margin over the 25ms budget)"
+      - "cargo clippy --all-targets -- -D warnings && cargo fmt --check: PASS after fixing 2 clippy findings (unnecessary_sort_by, manual_checked_ops) in the new census.rs example"
+      - "Census run: 197 files, 11.2ms total latency, 0 unreadable; entropy/phone false-positive hypothesis manually verified against engine-gateway-lab's own session-log.md content"
+      - "Full workspace verify chain (build --locked && clippy && fmt --check && test) re-run before opening this round's PR"
+    risks:
+      - "Entropy and phone detectors are dominated by false positives on Hekton's own operational-ID and date shapes (2468 and 783 findings respectively out of 197 files) -- a real, evidenced precision problem, not fixed or guessed at this session; needs a human product decision before T06/T07."
+    next_actions:
+      - "Human decision needed: how to address the entropy/phone false-positive rate before T06 (policy)/T07 (pipeline) go live."
+      - "Re-run the census as each Wave B/C task lands, per the Codex plan's ladder."
+      - "Serial-vs-concurrent decision for the remaining Wave B tasks (T04/T05/T05b/T06/T08) still open."

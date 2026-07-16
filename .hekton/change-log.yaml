@@ -146,3 +146,23 @@ changes:
       - "docs/decisions.md"
       - "docs/next-actions.md"
       - "docs/session-log.md"
+
+  - id: CHG-0008
+    date: 2026-07-16
+    title: "Real CI latency gate; T04/T08/T09 cross-crate + UX acceptance criteria; Codex dogfooding plan; real detector census"
+    intent: "Add a real, CI-enforced latency-regression gate (crates/vg-detectors/tests/latency_gate.rs) ahead of T10's formal harness. Add cross-crate integration acceptance criteria to T04/T08 (must integration-test against T03's real Finding/Span output, not only mocks) and a human UX-latency-verification criterion to T09, in .hekton/veilgremlin-dag.toml and the regenerated build-tasks specs. Reconcile a Codex planning pass on a dogfooding strategy. Build and run a read-only detector census (crates/vg-detectors/examples/census.rs) against 197 real Hekton files, surfacing a genuine, evidenced entropy/phone false-positive precision problem on operational-ID and date shapes -- not fixed or guessed at, left as an explicit human product decision."
+    changed_by: "claude (interactive session) + codex (planning pass)"
+    change_type: build
+    risk_level: low
+    validation:
+      - "cargo test -p vg-detectors: PASS, including the new latency_gate.rs test"
+      - "cargo clippy --all-targets -- -D warnings && cargo fmt --check: PASS"
+      - "Census run: 197 files, 11.2ms total latency; entropy/phone false-positive hypothesis manually verified against real repo content"
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    links:
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"

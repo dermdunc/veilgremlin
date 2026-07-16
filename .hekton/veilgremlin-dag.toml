@@ -57,7 +57,43 @@ wave = "B"
 depends_on = ["T01", "T02"]
 task_type = "code-implement"
 engine = "claude-cli"
-description = "Deterministic detectors: compiled regex sets (email/phone/IP/IBAN/sort-code), Aho-Corasick dictionaries, entropy detector."
+# 2026-07-15: expanded after the real T03 pilot dispatch returned a clarifying
+# question instead of doing the work -- headless -p mode has no follow-up
+# channel, so a terse one-liner was ambiguous enough that claude asked rather
+# than acted. Concrete file/module/trait guidance below, plus an explicit
+# "use your best judgment, don't ask" instruction, replaces the original
+# one-line description (kept in git history: see this file's blame).
+description = """
+Implement deterministic detectors in `crates/vg-detectors/src/` (currently an empty stub crate
+-- see its `lib.rs` docstring: "detector implementations land in Tasks T03/T04"; this task is T03).
+Each detector implements `vg_core::traits::Detector` (`fn id(&self) -> DetectorId`, `fn detect(&self,
+buf: &[u8], spans: &[Span]) -> Vec<Finding>`, `fn entity_types(&self) -> &[EntityType]` -- see
+`crates/vg-core/src/traits.rs`).
+
+Build these five detectors, one module per detector under `crates/vg-detectors/src/`:
+
+1. `email.rs` -- RFC-5322-ish email address regex.
+2. `phone.rs` -- E.164-ish phone number regex (accept common separators).
+3. `ip.rs` -- IPv4 and IPv6 address regex.
+4. `iban_sortcode.rs` -- IBAN (ISO 13616) and UK sort-code patterns.
+5. `entropy.rs` -- Shannon-entropy-based detector for high-entropy strings (e.g. API keys/secrets)
+   above a tunable threshold, on whitespace/punctuation-delimited tokens.
+
+Use `regex::Regex` (already a workspace dependency) for 1-4, compiled once (`OnceLock` or
+equivalent, not per-call). If a dictionary-matching detector is warranted per the interface
+contract's Aho-Corasick note, use the `aho-corasick` crate (add as a `vg-detectors` dependency if
+not already present) for known-term lists; if no such list is needed for these five, that's fine --
+do not add a dictionary detector that isn't specified above.
+
+Wire all five into a `pub fn all_detectors() -> Vec<Box<dyn Detector>>` (or the equivalent
+composition point the interface contract specifies) so downstream code can enumerate them.
+
+This is a one-shot headless dispatch: there is no follow-up channel. If any exact naming/shape
+choice above is ambiguous, use your best judgment, follow the existing conventions in
+`crates/vg-core` and the frozen `interface-contracts.md`, and record the assumption in the PR
+description and `docs/decisions.md` rather than asking a clarifying question -- an unasked-but-
+documented judgment call is recoverable in review; a session that ends by asking a question is not.
+"""
 acceptance = "unit tests per detector; bench p95 < 25 ms on reference input."
 context = ["docs/architecture/interface-contracts.md"]
 

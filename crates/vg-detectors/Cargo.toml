@@ -11,3 +11,11 @@ workspace = true
 
 [dependencies]
 vg-core = { workspace = true }
+regex = "1"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "detectors"
+harness = false

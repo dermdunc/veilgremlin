@@ -217,3 +217,40 @@ agent_runs:
     next_actions:
       - "Human: review/merge the T02 PR."
       - "Once T01 + T02 both merge: batch-dispatch Wave B (T03/T04, T05, T05b, T06, T08)."
+  - id: RUN-0007
+    date: 2026-07-15
+    agent: "claude (build + review) + codex (cross-model review, x2 rounds)"
+    role: "Build Agent"
+    intent: "T03 dispatch: first attempt got a clarifying question back from headless claude -p instead of code (one-shot mode has no follow-up channel) -- root-caused, task prompt rewritten with concrete file/module/trait guidance in .hekton/veilgremlin-dag.toml and the regenerated T03.md, re-dispatched. Second attempt produced real work (5 detectors + bench, ~800 lines), verify initially failed on a Cargo.lock mismatch + 1 clippy unused-import (both fixed, mechanical). Reviewed by my own pass plus two rounds of Codex cross-model doubt-driven-development (9 then 5 findings; 3 real bugs fixed: IPv4-mapped-IPv6 partial match, entropy detector missing password special characters, a resulting IP self-overlap; rest documented trade-offs or refuted). Tollgate-approved by the human via gateway-review.sh, which surfaced a real bug in that script along the way (worked around, logged as engine-gateway-lab RISK-0017). Session closed via control-tower."
+    autonomy_level: 3
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    files_touched:
+      - ".hekton/veilgremlin-dag.toml"
+      - ".hekton/build-tasks/T03.md"
+      - "crates/vg-detectors/Cargo.toml"
+      - "crates/vg-detectors/src/lib.rs"
+      - "crates/vg-detectors/src/util.rs"
+      - "crates/vg-detectors/src/email.rs"
+      - "crates/vg-detectors/src/phone.rs"
+      - "crates/vg-detectors/src/ip.rs"
+      - "crates/vg-detectors/src/iban_sortcode.rs"
+      - "crates/vg-detectors/src/entropy.rs"
+      - "crates/vg-detectors/benches/detectors.rs"
+      - "Cargo.lock"
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"
+    validation:
+      - "cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check && cargo test: PASS, 41 tests green in vg-detectors -- confirmed in both the worktree and the real repo after the tollgate applied the diff"
+      - "Criterion bench: ~0.62ms against the 25ms p95 budget"
+      - "Every real bug fix independently verified with a targeted regression test (IPv4-mapped IPv6 full match, password-with-special-characters detection) before being accepted as fixed"
+    risks:
+      - "engine-gateway-lab RISK-0017 opened (new): gateway-review.sh resolves output_artifact relative to its own repo root unconditionally, wrong for ACT-dispatched cross-repo worktree tasks -- worked around for T03, not fixed at the root."
+      - "Two accepted entropy-detector trade-offs documented, not fixed: including '@' in the tokenizer can also flag ordinary emails as Secret (precision cost), and can dilute a real secret merged with a long low-entropy suffix (false-negative shape) -- removing '@' would reopen the original gap the fix closed."
+    next_actions:
+      - "Human: review/merge the T03 PR once opened."
+      - "Decide serial-vs-concurrent for T04/T05/T05b/T06/T08 now that the rework loop and RISK-0016 are both proven for real."
+      - "engine-gateway-lab RISK-0017 needs a real fix before the next Wave B tollgate."

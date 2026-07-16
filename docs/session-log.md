@@ -321,3 +321,73 @@ resolution fails) rather than silently absent.
 - `cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check &&
   cargo test`: PASS, 7 tests green in `vg-core` (was 6 — added the cross-namespace-rejection
   coverage and the adversarial-buffer parser battery).
+
+## Session: T03 built (first genuinely unattended `code-implement` completion) + two rounds of doubt-driven-development + tollgate approved
+
+### What happened with the dispatch
+
+First attempt: terse one-line task prompt got a clarifying question back from headless
+`claude -p` instead of any code — a real, previously-unseen failure mode (one-shot mode has
+no follow-up channel, so the question was the entire session; the adapter still exited 0, so
+the gateway ledger recorded `in-progress` as if something legitimate happened, and ACT's own
+verify step trivially passed against the unchanged pre-existing code). Blocked via
+`control-tower session block T03`, root-caused, and fixed at the task-spec level: rewrote the
+description with concrete file/module/trait guidance plus an explicit "use your judgment,
+don't ask" instruction, in both `.hekton/veilgremlin-dag.toml` (the source of truth) and the
+regenerated `.hekton/build-tasks/T03.md`. Unblocked, reclaimed the stale worktree
+(`review-prune`), re-dispatched.
+
+Second attempt: real work — five detector modules (`email.rs`, `phone.rs`, `ip.rs`,
+`iban_sortcode.rs`, `entropy.rs`, ~800 lines) plus a criterion bench, matching the prompt
+closely. Verify initially failed on a `Cargo.lock` mismatch (new `regex`/`criterion` deps
+never locked) and one clippy unused-import — both mechanical fixes in the worktree, not logic
+changes. Full verify chain green after.
+
+### Doubt-driven-development (two rounds, Codex cross-model both times)
+
+Full findings and reconciliation are in `docs/decisions.md`'s 2026-07-15/16 entries — not
+repeated here. Summary: round 1 found 9 issues (3 real bugs fixed: IPv4-mapped-IPv6 partial
+match, entropy detector missing password special characters, a resulting IP self-overlap;
+rest documented trade-offs or refuted against the actual task breakdown). Round 2 verified
+those three fixes and found 5 more (2 real trade-offs the fixes themselves introduced,
+documented not fixed; rest pre-existing or duplicate of round 1's findings). Stopped at two
+cycles per the doubt-driven-development skill's own guidance.
+
+### Tollgate
+
+Approved by the human via `gateway-review.sh --task T03` — surfaced a real, previously-unhit
+bug in that script (see Risks below) along the way, worked around live so the review could
+proceed. Diff applied to the real repo, worktree pruned, `human_confirmed: true`,
+`status: done`. `control-tower session close T03` recorded the summary.
+
+### Decisions
+
+See `docs/decisions.md` 2026-07-15/16 entries for the full detector-review reconciliation.
+
+### Risks
+
+Found (in `engine-gateway-lab`, not this repo): `gateway-review.sh` resolves
+`output_artifact` relative to its own repo root unconditionally, which is wrong for
+ACT-dispatched, worktree-isolated tasks whose spec (and therefore real output) lives in a
+different repo — this is the first time that exact review code path has been exercised with
+real output waiting (T01 never produced output, T02 was applied by hand outside this flow).
+Logged as `engine-gateway-lab`'s RISK-0017; worked around for T03 with a placeholder file at
+the wrong path, not fixed at the root this session.
+
+### Next Actions
+
+- Human: review/merge the T03 PR once opened.
+- Decide serial-vs-concurrent for the remaining five Wave B tasks (T04/T05/T05b/T06/T08),
+  now that T03's pilot has proven the rework loop (block → unblock → re-dispatch) and the
+  RISK-0016 ledger fix, both for real. Per the runbook, default serial unless a future task
+  runs cleanly unattended.
+- `engine-gateway-lab`'s RISK-0017 (output-path resolution bug) needs a real fix before it's
+  relied on again for cross-repo worktree tasks — not blocking, since the workaround is known
+  and cheap to repeat, but worth closing before it's hit under less attention.
+
+### Validation status
+
+- `cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check &&
+  cargo test`: PASS, 41 tests green in `vg-detectors`, confirmed in both the worktree and the
+  real repo after the tollgate applied the diff.
+- Criterion bench: ~0.62ms against the 25ms p95 budget.

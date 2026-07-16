@@ -566,6 +566,8 @@ dependencies = [
 name = "vg-detectors"
 version = "0.1.0"
 dependencies = [
+ "criterion",
+ "regex",
  "vg-core",
 ]
 

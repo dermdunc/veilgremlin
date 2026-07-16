@@ -374,3 +374,115 @@ validated. The interface-contracts.md gap reinforces a lesson from the v1 phased
 "frozen" artifact that nobody actually re-reads before building against it (Wave B hasn't
 started yet, so nothing depended on it being current — but soon will) drifts from day one
 unless updating it is part of the same PR that changes what it describes, not a follow-up.
+
+## 2026-07-15 - Task T03: five deterministic detectors, plus a two-round doubt-driven-development pass
+
+### Context
+
+First genuinely successful unattended `code-implement` dispatch in the factory. The initial
+attempt (terse one-line task description) got a clarifying question back from `claude -p`
+instead of any code — headless one-shot mode has no follow-up channel, so that question was
+the entire session. Root-caused and fixed at the task-spec level (both `.hekton/veilgremlin-dag.toml`,
+the source of truth, and the regenerated `.hekton/build-tasks/T03.md`): rewrote the description
+with concrete file/module/trait guidance and an explicit "use your judgment, don't ask" instruction.
+Re-dispatched; this time claude wrote all five detectors for real (`email.rs`, `phone.rs`, `ip.rs`,
+`iban_sortcode.rs`, `entropy.rs`, ~800 lines, plus a criterion bench) matching the prompt closely.
+`Cargo.lock` needed a manual regenerate (new `regex`/`criterion` deps never locked) and one clippy
+unused-import — both mechanical, fixed in the worktree, not logic changes.
+
+### Findings and disposition (Codex cross-model doubt-pass, gpt-5.5, read-only sandbox)
+
+Reviewed against the `Detector` trait contract (span validity, no panics, determinism,
+confidence bounds) with an explicit security lens (false negatives in a PII/secret detector
+mean real leaks). 9 findings, reconciled:
+
+- **Fixed — real bug, not just a documented limitation:** `ip.rs`'s IPv6 pattern's own comment
+  claimed it "deliberately does not attempt" IPv4-mapped addresses (`::ffff:192.0.2.1`), implying
+  a clean miss — but the generic hex-group alternatives actually produced a truncated PARTIAL
+  match (`::ffff:192` out of the full address), which is worse than a miss for a redaction tool:
+  most of the real address (`.168.1.1`) was left sitting unredacted next to a redaction marker.
+  Added an explicit IPv4-mapped alternative, ordered first (this crate's regex alternation is
+  leftmost-first, not leftmost-longest, so ordering matters for which alternative wins).
+- **Fixed — real gap in the entropy detector's core purpose:** `is_token_byte` excluded common
+  password special characters (`!@#$%^&*`), so a genuinely high-entropy password like
+  `aB3!xY7@qR2#nM8$pL5%zK` was silently split into sub-20-byte fragments at every special
+  character, each individually below the length floor — a systematic miss of a realistic secret
+  shape, not a hypothetical one, for the one detector whose whole job is catching secrets with no
+  fixed format. Added those bytes; deliberately did NOT add `:`/`;`/`(`/`)` (too common as genuine
+  field/prose/timestamp delimiters — see the next item).
+- **Found only because the IPv6 fix now works correctly, then fixed:** the IPv4-mapped fix exposed
+  that the embedded `192.168.1.1` inside a matched `::ffff:192.168.1.1` ALSO independently matches
+  the standalone `ipv4_pattern()`, producing two overlapping findings for one real address.
+  `detect()` now drops an ipv4 finding when it's fully contained inside an ipv6 finding's span.
+- **Confirmed, documented as an accepted residual, not fixed:** colon-delimited compound secrets
+  (`user:token`) are still split and individually missed — `:` is too common a genuine delimiter
+  (timestamps, URLs, "key: value" idioms) to safely add to `is_token_byte` without risking spurious
+  merges elsewhere; the narrower punctuation-only fix above was judged the better trade-off.
+- **Confirmed, documented as an accepted residual, not fixed:** a phone number like
+  `+1 (415) 555-2671` only matches from the parenthesised group onward, leaving the leading `+1`
+  (just a country code, not the subscriber number) outside the redacted span. Low severity;
+  fixing it safely would need a real regex restructure, judged not worth the risk for this gap.
+- **Already documented in the code's own comments, not new bugs:** bare unseparated phone numbers
+  and 6-digit sort codes in JSON/API shapes (`{"phone":"02079460958"}`) are excluded by design
+  (phone.rs/iban_sortcode.rs already discuss this ambiguity); `YYYY-MM-DD` dates matching the phone
+  heuristic is the exact example phone.rs's own docstring already calls out.
+- **Real but out of `vg-detectors`' own scope, not fixed here:** independent detectors (e.g. IP vs
+  phone) can produce overlapping findings for the same span with different entity types when a
+  value's digit/separator shape satisfies more than one detector (`192.168.100.42` reads as both).
+  Cross-detector arbitration isn't part of the `Detector` trait's contract; likely T04/T09 territory
+  (typed-placeholder keying / cross-cutting policy), not a `vg-detectors` bug.
+- **Refuted:** IBAN mod-97 checksum validation is NOT missing scope — `docs/architecture/work-breakdown.md`
+  assigns "Luhn/mod-97 checksum validators" specifically to **T04**, not T03; `iban_sortcode.rs`'s own
+  comment correctly describes this as regex-only by design, matching the actual task breakdown, not
+  the broader aspirational spec the reviewer initially read it against.
+
+### Round-2 verification pass (same Codex model, fresh session): checked the three fixes above for new bugs
+
+Found 5 more, none requiring a code change — reconciled:
+
+- **Confirmed, accepted, documented (2, both caused by the `is_token_byte` fix above):**
+  including `@` makes an ordinary email (`jane.doe@example.com`) sit right at the entropy
+  threshold, so it can ALSO get tagged `Secret` alongside `EmailDetector`'s own more specific
+  `Email` finding for the same span — a precision cost (over-flagging), not a leak, and
+  consistent with this detector's own stated philosophy of flagging *any* sufficiently
+  random-looking token. More seriously: `@` can also merge a real secret with a long
+  low-entropy suffix (e.g. Basic-Auth-in-URL style `<secret>@internal.example.com`) and
+  dilute the merged token's entropy below threshold — a genuine false-negative shape, but
+  removing `@` would just reopen the original multi-special-character password gap this fix
+  closed. Judged: keep `@`, document both as accepted trade-offs (comments added to
+  `entropy.rs`), don't chase further — each further tweak to a coarse byte-classification
+  heuristic trades one realistic secret shape for another rather than strictly improving
+  coverage.
+- **Confirmed, pre-existing (not introduced by this session's fixes), documented, not fixed:**
+  `=` is a token byte, so a long low-entropy key name merged with `=<secret>` can similarly
+  dilute a real secret's entropy below threshold. Same class of trade-off as above.
+- **Confirmed, accepted, documented:** the IPv4-mapped-IPv6 fix only covers the specific
+  `::ffff:` prefix (the common, still-valid form); rarer/deprecated embedded-IPv4 shapes
+  (`2001:db8::192.168.1.1`, an IPv4-compatible form RFC 4291 itself deprecated in 2006; a
+  malformed `::ffff:0:192.168.1.1`) still produce the same partial-match behavior the fix
+  was meant to close, just for a rarer input. Judged not worth generalizing further, matching
+  the original scope call on embedded-IPv4 notation.
+- **Same already-documented class as the first pass, not a new issue:** the phone detector
+  matching a dotted IPv4 address (`10.10.10.10`) as a phone number is the identical
+  cross-detector-overlap class already documented above (IP vs phone), independently
+  rediscovered rather than a distinct new finding.
+- **All three fixes verified correct** for their stated purpose (regex alternation ordering,
+  overlap-dedup logic, tokenizer broadening) — no regressions found in the fixes themselves,
+  only in their interaction with adjacent, unrelated inputs (emails, `=`-delimited keys),
+  which is the residual surface documented above, not a defect in the fix logic itself.
+
+Two full cross-model review cycles on this one crate is the stop point (per the
+doubt-driven-development skill's own guidance: escalate rather than grind a third cycle
+alone) — the remaining residual surface is a property of a coarse, deliberately simple
+byte-classification heuristic, not a bug queue to keep chasing.
+
+### Why this matters
+
+Two genuinely new, generalizable lessons from this one task: (1) headless one-shot dispatch is
+extremely sensitive to prompt specificity — the exact same task, described tersely, produced a
+clarifying question and nothing else; described concretely with file/module/trait guidance, it
+produced ~800 lines of real, well-tested, well-documented work on the first attempt. (2) A
+security detector's own documentation can be *wrong* about its own limitations in a way that
+matters: this code's comment said a case was "not attempted" (implying a safe miss) when it was
+actually mishandled (an unsafe partial match) — the fix isn't just adding a feature, it's
+correcting a false safety claim the code made about itself.

@@ -36,3 +36,41 @@ Branch name (gateway/run-20260714-T01) never matched agent-factory-plan.md's fea
 ### Next Actions
 
 - [ ] Human: dispatch/build T02 (freeze vg-core's shared types + interface-contracts.md v1) -- Wave B doesn't start until T01 and T02 both merge; consider whether engine-gateway-lab/agentic-control-tower's branch-naming convention should be reconciled with agent-factory-plan.md's before T02 dispatches.
+
+## Session: T03 built (first genuinely unattended code-implement completion), reviewed, tollgate-approved
+
+**Date:** 2026-07-15
+
+### What Changed
+
+First T03 dispatch attempt got a clarifying question back from headless claude -p instead of
+code (one-shot mode, no follow-up channel); root-caused, task prompt rewritten with concrete
+file/module/trait guidance, re-dispatched. Second attempt: real work -- five detector modules
+(email/phone/ip/iban_sortcode/entropy, ~800 lines) + criterion bench. Reviewed by two rounds
+of Codex cross-model doubt-driven-development (9 then 5 findings; 3 real bugs fixed). Tollgate
+approved by the human; a real gateway-review.sh bug surfaced along the way (worked around,
+logged as engine-gateway-lab RISK-0017).
+
+### Decisions
+
+Full reconciliation of all findings across both doubt-driven-development rounds is in
+`docs/decisions.md`, not repeated here.
+
+### Assumptions
+
+None beyond what the two review rounds directly verified.
+
+### Risks
+
+`engine-gateway-lab` RISK-0017 (new): `gateway-review.sh` resolves `output_artifact` relative
+to its own repo root unconditionally, wrong for ACT-dispatched cross-repo worktree tasks --
+worked around for T03, not fixed at the root.
+
+### Next Actions
+
+- [ ] Human: review/merge the T03 PR once opened.
+- [ ] Decide serial-vs-concurrent for T04/T05/T05b/T06/T08.
+- [ ] `engine-gateway-lab` RISK-0017 needs a real fix before the next Wave B tollgate.
+- [ ] Note for a future mirror-sync session: this mirror was found missing T02's entire
+      session entry before this update (pre-existing drift, not introduced this session) --
+      flagged rather than silently backfilled.

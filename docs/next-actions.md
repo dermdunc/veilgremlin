@@ -113,3 +113,17 @@ Repo source-of-truth for the work queue. Tasks T01–T11 are defined in [`archit
 - [ ] Still open: the branch-naming mismatch between the ACT/engine-gateway dispatch
       tooling's convention and `agent-factory-plan.md`'s `feat/<squad>-<task-id>-<slug>`
       convention (flagged, not fixed, since T01).
+
+## Session Update: 2026-07-15/16 — T03 built (first genuinely unattended completion), reviewed, approved
+
+- [x] T03 dispatched (twice — first attempt got a clarifying question, prompt rewritten,
+      re-dispatched), reviewed (my own pass + two Codex cross-model rounds, 3 real bugs
+      fixed), tollgate-approved, session closed. Full record in `docs/decisions.md` and
+      `docs/session-log.md`.
+- [ ] Human: review/merge the T03 PR once opened.
+- [ ] Decide serial-vs-concurrent for T04/T05/T05b/T06/T08 now that the rework loop and the
+      RISK-0016 ledger fix are both proven for real. Default serial per the runbook unless a
+      future task completes cleanly unattended.
+- [ ] `engine-gateway-lab` RISK-0017 (gateway-review.sh's output-path resolution breaks for
+      ACT-dispatched cross-repo worktree tasks) needs a real fix before the next Wave B
+      tollgate — worked around for T03, not fixed at the root.

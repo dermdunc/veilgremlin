@@ -127,3 +127,22 @@ changes:
       - "docs/decisions.md"
       - "docs/next-actions.md"
       - "docs/session-log.md"
+
+  - id: CHG-0007
+    date: 2026-07-15
+    title: "T03: five deterministic detectors (email/phone/ip/iban_sortcode/entropy) + criterion bench, first genuinely unattended code-implement completion"
+    intent: "Implement crates/vg-detectors' real detector logic (scaffolded empty in T01), matching interface-contracts.md's Detector trait. First attempt at this task got a clarifying question back from headless dispatch instead of code; task prompt rewritten with concrete guidance and re-dispatched successfully. Two rounds of Codex cross-model doubt-driven-development found and fixed 3 real bugs: an IPv4-mapped IPv6 address partially matched instead of fully (leaving most of a real address unredacted); the entropy detector's tokenizer excluded common password special characters, missing a whole class of realistic secrets; fixing the IPv6 bug exposed a resulting self-overlap between the IPv4 and IPv6 sub-patterns, also fixed."
+    changed_by: "claude (build + review) + codex (cross-model review, x2 rounds)"
+    change_type: build
+    risk_level: medium
+    validation:
+      - "cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check && cargo test: PASS, 41 tests green in vg-detectors, confirmed in both the worktree and the real repo after tollgate apply"
+      - "Criterion bench: ~0.62ms against the 25ms p95 budget"
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    links:
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"

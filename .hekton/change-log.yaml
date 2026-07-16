@@ -166,3 +166,22 @@ changes:
       - "docs/decisions.md"
       - "docs/next-actions.md"
       - "docs/session-log.md"
+
+  - id: CHG-0009
+    date: 2026-07-16
+    title: "Entropy/phone false-positive fix: PhoneDetector ISO-date exclusion + EntropyDetector structured-identifier exclusion"
+    intent: "Address the census's evidenced entropy/phone false-positive finding via a Codex-recommended hybrid (fix detectors now, keep T10 as the formal gate), human-approved. PhoneDetector now excludes strict YYYY-MM-DD/YYYY.MM.DD date shapes. EntropyDetector now excludes tokens that decompose entirely into purely-alphabetic or purely-numeric segments when split on /./_/-  -- covers file paths and snake_case/kebab-case identifiers, the real dominant false-positive classes found by measuring against real content (a first version targeting Hekton run-ID shapes specifically was measured and found to barely help, then corrected)."
+    changed_by: "codex (planning pass) + claude (implement + measure)"
+    change_type: build
+    risk_level: low
+    validation:
+      - "cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check && cargo test: PASS, 46 tests green (5 new)"
+      - "Isolated before/after census measurement on identical engine-gateway-lab content: entropy -90% (1849->182), phone -91% (618->54), latency unaffected"
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    links:
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"

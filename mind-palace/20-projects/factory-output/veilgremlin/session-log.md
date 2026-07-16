@@ -109,7 +109,42 @@ T06/T07.
 
 ### Next Actions
 
-- [ ] Human decision needed: how to address the entropy/phone false-positive rate before
-      T06/T07 go live.
+- [x] Human decision made: ran the three options through a Codex planning pass
+      (hybrid recommended, approved); fixed and measured (entropy -90%, phone -91% on
+      isolated identical content).
+- [ ] Re-run the census as each Wave B/C task lands.
+- [ ] Serial-vs-concurrent decision for the remaining Wave B tasks still open.
+
+## Session: Fixed the entropy/phone false-positive finding (Codex-planned, hybrid, measured)
+
+**Date:** 2026-07-16
+
+### What Changed
+
+Ran the census's open false-positive question through a Codex planning pass; Codex
+recommended a hybrid (fix detectors now, keep T10 as the formal gate) after reading the
+actual frozen contracts. Implemented `PhoneDetector`'s ISO-date exclusion and
+`EntropyDetector`'s structured-identifier exclusion. The entropy fix needed a
+mid-session correction: the first version assumed Hekton's own run-ID shapes were
+dominant and barely helped when measured; the real dominant classes were file paths and
+snake_case/kebab-case identifiers, fixed generically.
+
+### Decisions
+
+Full record, including the mid-session correction, in repo `docs/decisions.md`'s
+2026-07-16 entry.
+
+### Assumptions
+
+None beyond what the isolated before/after measurement (via `git stash` on identical
+`engine-gateway-lab` content) directly showed.
+
+### Risks
+
+Accepted residual: a dictionary-word passphrase joined by delimiters would also be
+excluded by the entropy fix. Remaining ~10% of findings left for T10's formal gate.
+
+### Next Actions
+
 - [ ] Re-run the census as each Wave B/C task lands.
 - [ ] Serial-vs-concurrent decision for the remaining Wave B tasks still open.

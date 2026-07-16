@@ -145,11 +145,20 @@ Repo source-of-truth for the work queue. Tasks T01–T11 are defined in [`archit
       and dates — verified by hand against the actual repo content. Latency itself is fine
       (11.2ms / 197 files). Full detail and the open design question (allowlist? tighter
       heuristics? measure via T10's `false_positive_rate` metric?) in `docs/decisions.md`.
-- [ ] **Human decision needed:** how to address the entropy/phone false-positive rate before
-      Task T06 (policy)/T07 (pipeline) go live — not decided or guessed at this session,
-      genuinely needs a product call.
+- [x] **Human decision made:** ran the three options through a Codex planning pass
+      (reconciled in `docs/decisions.md`), which recommended a hybrid — fix the two
+      dominant detector-level false positives now, keep T10 as the formal gate. Human
+      approved. Implemented and measured: entropy false positives -90%, phone -91% on
+      identical `engine-gateway-lab` content (isolated before/after). A first attempt at
+      the entropy fix targeted the wrong shape (assumed Hekton run-IDs; real dominant
+      class was file paths + snake_case/kebab-case identifiers) — caught by measuring
+      against real content rather than shipping on the unverified assumption. See
+      `docs/decisions.md`.
 - [ ] Re-run `cargo run --example census -- <paths>` as each Wave B/C task lands, per the Codex
       plan's ladder (detector-only now → parser+detector after T08 → stubbed mini-pipeline after
       T04/T05/T06/T05b → real `mask()` after T07 → real dogfood after T09).
 - [ ] Decide serial-vs-concurrent for the remaining Wave B tasks (T04/T05/T05b/T06/T08) — still
       open from the prior session update above.
+- [ ] Residual ~10% entropy/phone false positives left for T10's formal
+      `false_positive_rate` measurement, per the hybrid decision — not a new gap, the
+      accepted remainder.

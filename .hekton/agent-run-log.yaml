@@ -287,3 +287,29 @@ agent_runs:
       - "Human decision needed: how to address the entropy/phone false-positive rate before T06 (policy)/T07 (pipeline) go live."
       - "Re-run the census as each Wave B/C task lands, per the Codex plan's ladder."
       - "Serial-vs-concurrent decision for the remaining Wave B tasks (T04/T05/T05b/T06/T08) still open."
+  - id: RUN-0009
+    date: 2026-07-16
+    agent: "codex (planning pass) + claude (implement + measure)"
+    role: "Build Agent"
+    intent: "Ran a Codex planning pass on the three open false-positive-fix options (allowlist/tighter heuristics/defer to T10); Codex recommended a hybrid (fix detectors now, keep T10 as the formal gate), read against the actual frozen contracts. Implemented PhoneDetector's ISO-date exclusion and EntropyDetector's structured-identifier exclusion. The entropy fix required a mid-session correction after measuring it against real content showed the first version (targeting Hekton run-ID shapes) barely worked; corrected to a generic path/identifier-shape exclusion. Measured a real, isolated before/after (git stash) on unchanged engine-gateway-lab content: entropy -90%, phone -91%, latency unaffected."
+    autonomy_level: 3
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    files_touched:
+      - "crates/vg-detectors/src/entropy.rs"
+      - "crates/vg-detectors/src/phone.rs"
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"
+    validation:
+      - "cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check && cargo test: PASS, 46 tests green in vg-detectors (5 new)"
+      - "Isolated before/after census measurement via git stash on identical engine-gateway-lab content: entropy 1849->182 (-90%), phone 618->54 (-91%)"
+      - "Latency confirmed unaffected (10.19ms/197 files combined-repo census, vs 11.2ms before)"
+    risks:
+      - "Accepted residual, not fixed: a dictionary-word passphrase joined by delimiters (e.g. correct-horse-battery-staple) would also be excluded by the entropy fix -- indistinguishable from a real identifier without a semantic check this detector doesn't have."
+      - "Remaining ~10% of entropy/phone findings left for T10's formal false_positive_rate gate, per the hybrid decision, not a new unflagged gap."
+    next_actions:
+      - "Re-run the census as each Wave B/C task lands."
+      - "Serial-vs-concurrent decision for the remaining Wave B tasks still open."

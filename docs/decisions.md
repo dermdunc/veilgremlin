@@ -586,3 +586,70 @@ not guessed at. `census.rs` is kept in the repo (an `examples/` binary, not part
 build/test path) so this can be re-run cheaply as each Wave B/C task lands, per the Codex plan's
 ladder (detector-only now → parser+detector after T08 → stubbed mini-pipeline after
 T04/T05/T06/T05b → real `mask()` after T07 → real dogfood after T09).
+
+## 2026-07-16 - Fixed the entropy/phone false-positive finding (hybrid: detector patch now, T10 stays the gate)
+
+### Context
+
+Ran the census's open question (allowlist? tighter heuristics? defer to T10?) through a
+Codex planning pass before deciding, per the human's request. Codex read the actual frozen
+`PolicyEngine`/`Detector` contracts and the real detector code before answering, and
+recommended a hybrid: fix the two dominant detector-level false-positive classes now
+(`EntropyDetector`, `PhoneDetector`), keep Task T10 as the formal precision/recall gate,
+and explicitly deprioritized a per-finding policy-layer allowlist for now — the frozen
+`PolicyEngine::classify_artefact`/`classify_entity` contract has no per-finding-shape hook,
+so building that properly is a real cross-cutting contract change, not a quick add, and a
+regex-based allowlist would itself be a potential attacker-controlled bypass surface if not
+carefully scoped. Human approved the hybrid.
+
+### What was actually fixed
+
+**`PhoneDetector`**: added `looks_like_iso_date`, excluding matches shaped like a strict
+`YYYY-MM-DD`/`YYYY.MM.DD` calendar date (plausible year/month/day) rather than a phone
+number. Narrow and generic — does not exclude arbitrary grouped numbers, only the exact
+date shape.
+
+**`EntropyDetector`**: added `is_structured_identifier`. **This required a correction
+mid-session**: the first version assumed Hekton's own `run-YYYYMMDD-EG-NNN` run IDs were
+the dominant false-positive shape (matching the census's original hypothesis) and only
+excluded 3+-segment hyphen-delimited tokens with short alpha/bounded-digit segments.
+Measuring it against real `engine-gateway-lab` content (via a temporary, never-committed
+local debug print — not the census tool, which by design never surfaces matched text) showed
+this removed only 1 of 1849 entropy findings on that fixed corpus. The actual dominant
+classes were **file paths** (`scripts/gateway-run.sh`, `.hekton/risk-register.yaml`) and
+**snake_case/kebab-case identifiers** (`requires_confirmation`, `local-coding-harness`) —
+`is_token_byte` treats `/`, `.`, and `_` as part of a token, so a whole path or identifier is
+scored for entropy as one blob, and the character-class mix clears the threshold even though
+every piece is an ordinary word. Corrected to split on the token's own internal delimiters
+(`/`, `.`, `_`, `-`) and exclude when every resulting segment is purely alphabetic (any
+length) or purely numeric (<=8 digits) — catches paths/identifiers/operational-IDs
+generically, not via a Hekton-specific dictionary.
+
+**Accepted residual, not fixed**: a real secret that happens to be a dictionary-word
+passphrase joined by delimiters (e.g. `correct-horse-battery-staple`) would also be excluded
+— indistinguishable from a real identifier without a semantic/dictionary check this detector
+doesn't have. A secret whose segments mix letters and digits (the vast majority of real
+base64/hex/API-key shapes) is unaffected.
+
+### Measured impact (isolated before/after on identical, untouched `engine-gateway-lab`
+content — not the confounded combined-repo numbers, since this session's own doc edits also
+grew VeilGremlin's own corpus)
+
+```
+                 before   after
+entropy          1849     182    (-90%)
+phone            618      54     (-91%)
+```
+
+Latency unaffected (10.19ms / 197 files across both repos, vs. 11.2ms before). Full
+`cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check &&
+cargo test` green throughout, including 5 new tests (2 phone, 3 entropy) built directly from
+the real false-positive examples found.
+
+### Decision
+
+Ship the corrected detector-level fix now; T10 remains the formal `false_positive_rate`
+gate for the residual ~10% and any future drift. The mid-session correction is itself
+evidence for why "measure on real content, don't just theorize" (the whole point of the
+census/dogfooding effort) matters — the first, unmeasured version of this exact fix would
+have shipped almost no real improvement.

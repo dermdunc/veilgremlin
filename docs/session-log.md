@@ -461,4 +461,55 @@ reconciliation, and the census finding) in `docs/decisions.md`'s 2026-07-16 entr
   (p95 well within the 4x CI-safe margin).
 - `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check`: PASS after fixing
   2 clippy findings in the new `census.rs` example.
-- Full workspace verify chain to be re-confirmed before opening the PR for this round.
+- Full workspace verify chain re-confirmed before opening the PR (#6) for this round.
+
+## Session: Fixed the entropy/phone false-positive finding (Codex-planned, hybrid, measured)
+
+### What happened
+
+Asked Codex to plan out the three open options from the census finding (allowlist,
+tighter heuristics, defer to T10) before deciding. Codex read the actual frozen
+`PolicyEngine`/`Detector` contracts and the real detector code, then recommended a
+hybrid: fix the two dominant detector-level false positives now, keep T10 as the formal
+gate, and explicitly deprioritized a policy-layer allowlist (no per-finding hook in the
+frozen contract; a regex allowlist is also a potential bypass-surface risk). Human
+approved the hybrid.
+
+Implemented `looks_like_iso_date` in `PhoneDetector` (excludes strict `YYYY-MM-DD`
+shapes) and `is_structured_identifier` in `EntropyDetector`. The entropy fix needed a
+mid-session correction: the first version assumed Hekton's own `run-YYYYMMDD-EG-NNN` run
+IDs were the dominant shape (matching the census's original hypothesis) and barely
+moved the needle when measured (1 of 1849 findings removed on real `engine-gateway-lab`
+content, via a temporary local debug print, never committed). The real dominant classes
+were file paths and snake_case/kebab-case identifiers — corrected to a generic
+delimiter-splitting rule (segments must be purely alphabetic or purely numeric) that
+catches both shapes without a Hekton-specific dictionary.
+
+### Measured impact (isolated before/after via `git stash` on identical, untouched
+`engine-gateway-lab` content)
+
+```
+                 before   after
+entropy          1849     182    (-90%)
+phone            618      54     (-91%)
+```
+
+Latency unaffected. The remaining ~10% is left for T10's formal `false_positive_rate`
+gate, per the hybrid decision, not silently ignored.
+
+### Decisions
+
+Full record, including the mid-session correction and why "measure on real content, not
+theory" mattered here concretely, in `docs/decisions.md`'s 2026-07-16 entry.
+
+### Next Actions
+
+- Re-run the census as each Wave B/C task lands (still open from the prior session).
+- Serial-vs-concurrent decision for the remaining Wave B tasks still open.
+
+### Validation status
+
+- `cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check
+  && cargo test`: PASS, 46 tests green in `vg-detectors` (5 new: 2 phone date-exclusion,
+  3 entropy structured-identifier tests, built from the real false-positive examples
+  found).

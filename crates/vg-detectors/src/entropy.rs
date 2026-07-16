@@ -76,6 +76,56 @@ fn is_token_byte(b: u8) -> bool {
         )
 }
 
+/// Excludes tokens that decompose entirely into word-like or short-numeric segments
+/// when split on structural delimiters (`/`, `.`, `_`, `-`) -- covers file paths
+/// (`scripts/gateway-run.sh`), snake_case/kebab-case identifiers
+/// (`requires_confirmation`, `local-coding-harness`), and structured operational IDs
+/// (`run-20260608-EG-012`) uniformly, rather than an unstructured secret.
+///
+/// **2026-07-16 census finding, corrected after measurement:** an initial version of
+/// this exclusion assumed Hekton's own `run-YYYYMMDD-EG-NNN` run IDs were the dominant
+/// false-positive shape. Measuring the *actual* matched tokens (via a temporary local
+/// debug print against real `engine-gateway-lab` content, never committed) showed that
+/// assumption was wrong: on that specific fixed content, the fix only removed 1 of 1849
+/// entropy findings. The real dominant classes were file paths and
+/// snake_case/kebab-case code identifiers -- `is_token_byte` treats `/`, `.`, and `_` as
+/// part of a token (not a delimiter), so a whole path or identifier is scored for
+/// entropy as one blob, and the resulting mix of letters/case/punctuation clears the
+/// threshold even though every piece is an ordinary word. This version fixes that:
+/// splitting on the token's own internal delimiters and requiring every resulting piece
+/// to be purely alphabetic (any length -- these are word-like labels, not random blobs)
+/// or purely numeric (<=8 digits -- dates/ordinals) catches paths and identifiers
+/// generically, not via a Hekton-specific dictionary.
+///
+/// **Accepted residual, not fixed:** a real secret that happens to be a
+/// dictionary-word passphrase joined by delimiters (e.g. `correct-horse-battery-staple`)
+/// would also be excluded by this rule -- indistinguishable from a real identifier
+/// without a dictionary/semantic check this detector doesn't have. A secret whose
+/// segments mix letters and digits (the vast majority of real base64/hex/API-key
+/// shapes) is unaffected, since a mixed segment is neither purely alphabetic nor purely
+/// numeric and fails this exclusion.
+fn is_structured_identifier(token: &[u8]) -> bool {
+    let Ok(s) = std::str::from_utf8(token) else {
+        return false;
+    };
+    // Empty segments (a leading/trailing delimiter, e.g. the dotfile in
+    // `.hekton/risk-register.yaml`, or a doubled delimiter) are common and not
+    // themselves suspicious -- filtered out rather than treated as disqualifying.
+    let segments: Vec<&str> = s
+        .split(['/', '.', '_', '-'])
+        .filter(|seg| !seg.is_empty())
+        .collect();
+    if segments.len() < 2 {
+        return false;
+    }
+    segments.iter().all(|seg| {
+        let bytes = seg.as_bytes();
+        let all_alpha = bytes.iter().all(|b| b.is_ascii_alphabetic());
+        let all_digit = bytes.iter().all(|b| b.is_ascii_digit());
+        all_alpha || (all_digit && bytes.len() <= 8)
+    })
+}
+
 fn shannon_entropy_bits_per_byte(token: &[u8]) -> f64 {
     let mut counts = [0u32; 256];
     for &b in token {
@@ -147,6 +197,9 @@ impl Detector for EntropyDetector {
             if token.len() < self.min_length {
                 continue;
             }
+            if is_structured_identifier(token) {
+                continue;
+            }
             let entropy = shannon_entropy_bits_per_byte(token);
             if entropy >= self.threshold {
                 findings.push(Finding {
@@ -196,6 +249,42 @@ mod tests {
             "expected one merged high-entropy token, got {findings:?}"
         );
         assert_eq!(findings[0].entity_type, EntityType::Secret);
+    }
+
+    #[test]
+    fn ignores_structured_identifiers_even_at_a_lenient_threshold() {
+        // Lenient params so this test proves the shape-exclusion fires, independent of
+        // whether the default 3.5 threshold happens to catch these particular tokens.
+        // These are the real dominant false-positive shapes found by the 2026-07-16
+        // census against engine-gateway-lab's actual content (file paths and
+        // snake_case/kebab-case identifiers), not the Hekton-run-ID shape an earlier,
+        // measurement-corrected version of this exclusion assumed was dominant.
+        let lenient = EntropyDetector::new(10, 0.5);
+        for id in [
+            "run-20260608-EG-012",
+            "RISK-0017-EG-001",
+            "scripts/gateway-run.sh",
+            "docs/api-contract.md",
+            ".hekton/risk-register.yaml",
+            "requires_confirmation",
+            "confirm_cloud_egress_or_abort",
+            "local-coding-harness",
+        ] {
+            assert!(
+                lenient.detect(id.as_bytes(), &[]).is_empty(),
+                "expected {id} to be excluded as a structured identifier"
+            );
+        }
+    }
+
+    #[test]
+    fn still_flags_a_real_secret_shaped_with_delimiters_at_a_lenient_threshold() {
+        // Same lenient params, but each segment mixes letters and digits (a UUID's hex
+        // groups), so no segment is purely alphabetic or purely numeric -- the
+        // exclusion must not swallow it.
+        let lenient = EntropyDetector::new(10, 0.5);
+        let uuid_like = "550e8400-e29b-41d4-a716-446655440000";
+        assert!(!lenient.detect(uuid_like.as_bytes(), &[]).is_empty());
     }
 
     #[test]

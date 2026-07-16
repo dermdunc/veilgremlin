@@ -13,10 +13,18 @@
 //!
 //! This is a heuristic by construction — the task spec calls for "E.164-ish", not a
 //! validator — and it will still false-positive on separator-shaped numeric strings
-//! that happen to fall in the digit-count range (e.g. a `YYYY-MM-DD` date has 8 digits
-//! across 3 groups, indistinguishable by shape alone from a short local number). This
-//! detector's confidence is set below the fixed-format detectors' (email/IP/IBAN) to
-//! reflect that extra ambiguity; see `docs/decisions.md`.
+//! that happen to fall in the digit-count range. This detector's confidence is set
+//! below the fixed-format detectors' (email/IP/IBAN) to reflect that extra ambiguity;
+//! see `docs/decisions.md`.
+//!
+//! **2026-07-16 census finding:** a real 197-file scan of Hekton's own repos found the
+//! `YYYY-MM-DD` case above wasn't hypothetical — it was the dominant false-positive
+//! class (783 of the census's phone findings), since dates are common in prose and an
+//! 8-digit, 4/2/2-grouped, calendar-valid date is common enough to swamp real numbers.
+//! Fixed narrowly via `looks_like_iso_date`: excludes only the strict ISO date shape,
+//! not arbitrary grouped numbers, per the Codex-reconciled decision in
+//! `docs/decisions.md` to fix detector-local false positives now rather than wait for
+//! Task T10's formal precision measurement.
 
 use std::sync::OnceLock;
 
@@ -44,6 +52,41 @@ fn has_phone_marker(matched: &[u8]) -> bool {
         .any(|b| matches!(b, b'+' | b'(' | b')' | b'-' | b'.' | b' '))
 }
 
+/// Excludes matches shaped like an ISO-ish calendar date (`YYYY-MM-DD` or
+/// `YYYY.MM.DD`) rather than a phone number: 8 digits split 4/2/2 with a
+/// plausible year/month/day is indistinguishable from a short local number by
+/// digit-count and marker alone, but real phone numbers essentially never fall
+/// into exactly this grouping with a calendar-valid month and day. Deliberately
+/// narrow (2026-07-16 census finding, see `docs/decisions.md`): only the strict
+/// 4/2/2 date shape is excluded, not arbitrary grouped numbers, so this doesn't
+/// eat real short local numbers that happen to share a digit count.
+fn looks_like_iso_date(matched: &[u8]) -> bool {
+    let Ok(s) = std::str::from_utf8(matched) else {
+        return false;
+    };
+    let groups: Vec<&str> = s.split(['-', '.']).collect();
+    let [year, month, day] = groups.as_slice() else {
+        return false;
+    };
+    if year.len() != 4 || month.len() != 2 || day.len() != 2 {
+        return false;
+    }
+    if !year.bytes().all(|b| b.is_ascii_digit())
+        || !month.bytes().all(|b| b.is_ascii_digit())
+        || !day.bytes().all(|b| b.is_ascii_digit())
+    {
+        return false;
+    }
+    let (Ok(y), Ok(m), Ok(d)) = (
+        year.parse::<u32>(),
+        month.parse::<u32>(),
+        day.parse::<u32>(),
+    ) else {
+        return false;
+    };
+    (1900..=2099).contains(&y) && (1..=12).contains(&m) && (1..=31).contains(&d)
+}
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct PhoneDetector;
 
@@ -59,7 +102,10 @@ impl Detector for PhoneDetector {
             .filter_map(|m| {
                 let matched = m.as_bytes();
                 let digit_count = matched.iter().filter(|b| b.is_ascii_digit()).count();
-                if !(MIN_DIGITS..=MAX_DIGITS).contains(&digit_count) || !has_phone_marker(matched) {
+                if !(MIN_DIGITS..=MAX_DIGITS).contains(&digit_count)
+                    || !has_phone_marker(matched)
+                    || looks_like_iso_date(matched)
+                {
                     return None;
                 }
                 Some(Finding {
@@ -130,6 +176,31 @@ mod tests {
         assert!(PhoneDetector
             .detect(b"ref-123456789012345678", &[])
             .is_empty());
+    }
+
+    #[test]
+    fn ignores_an_iso_date() {
+        assert!(PhoneDetector
+            .detect(b"session started on 2026-07-16 and ran late", &[])
+            .is_empty());
+        assert!(PhoneDetector.detect(b"logged 2026.07.16", &[]).is_empty());
+    }
+
+    #[test]
+    fn ignores_iso_dates_across_the_full_calendar_year() {
+        for (y, m, d) in [(2026, 1, 31), (2026, 12, 1), (1999, 6, 15), (2099, 2, 28)] {
+            let s = format!("{y:04}-{m:02}-{d:02}");
+            assert!(
+                PhoneDetector.detect(s.as_bytes(), &[]).is_empty(),
+                "expected {s} to be excluded as a date"
+            );
+        }
+    }
+
+    #[test]
+    fn still_detects_a_real_number_with_the_same_digit_count_as_a_date() {
+        // 8 digits, 3 groups, but month/day out of calendar range -- not a date shape.
+        assert_eq!(PhoneDetector.detect(b"call 9999-99-99 now", &[]).len(), 1);
     }
 
     #[test]

@@ -205,3 +205,16 @@ Repo source-of-truth for the work queue. Tasks T01–T11 are defined in [`archit
       rather than reimplementing keying.
 - [ ] Decide serial-vs-concurrent for the remaining Wave B tasks (T05/T05b/T06/T08) —
       still open.
+
+## Session Update: 2026-07-17 — PR #9 merged; vault sync; build-log audit
+
+- [x] PR #9 merged (T04 + consolidated DAG changes from the now-closed PR #8).
+- [x] Vault backed up and synced (`scripts/sync-mirror-to-vault.sh`) — this project's
+      vault entry hadn't been touched since before T01. Fixed a real bug in the script
+      itself (silently staged nothing due to a stale `git add` pathspec).
+- [x] Audited `docs/build-log/` coverage against actual work done; found and fixed one
+      gap (T04's doubt-pass bugs never got their own entry). Confirmed the build log
+      ships automatically with this public repo — no separate publish step needed.
+- [ ] Re-audit build-log coverage after each future task lands.
+- [ ] Decide serial-vs-concurrent for the remaining Wave B tasks (T05/T05b/T06/T08) —
+      still open.

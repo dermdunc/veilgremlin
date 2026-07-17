@@ -92,7 +92,12 @@ if [[ "$DRY_RUN" == true ]]; then
   exit 0
 fi
 
-git -C "$VAULT_ROOT" add "${MP_REL}/index.md" "${MP_REL}/decisions.md" "${MP_REL}/session-log.md" 2>/dev/null
+# Bug found 2026-07-17: this used to list decisions.md alongside index.md/session-log.md,
+# but decisions.md is deliberately never mirrored to the vault (see the boundary-rule
+# comment above SUMMARY_FILES) -- git add aborts the ENTIRE command, staging nothing,
+# when any one pathspec doesn't match a file, so the vault copy landed on disk (via `cp`
+# above) but silently never got committed. Stage only what SUMMARY_FILES actually mirrors.
+git -C "$VAULT_ROOT" add "${MP_REL}/index.md" "${MP_REL}/session-log.md" 2>/dev/null
 echo "Staged, scoped to $PROJECT:"
 git -C "$VAULT_ROOT" diff --cached --name-only | sed 's/^/  /'
 echo ""

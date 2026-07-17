@@ -230,3 +230,26 @@ criteria so it can't be silently skipped.
   integration tests, 7 conformance tests, 46 detector tests, 1 latency-gate test, all
   green — confirmed in both the worktree and the real repo after the tollgate applied
   the diff.
+
+## Session: PR #9 merged; vault sync; build-log coverage audit
+
+**Date:** 2026-07-17
+
+### What Changed
+
+Merged PR #9. Backed up and synced the Obsidian vault via `scripts/sync-mirror-to-vault.sh`
+(this project's vault entry hadn't been touched since before T01) — found and fixed a real
+bug in that script (a stale `git add` pathspec silently blocked every commit it ever tried
+to make). Audited `docs/build-log/` against actual work done, per a human request to
+confirm it will genuinely track how/why/what this project is building when delivered as
+part of the final project. Found and fixed one real gap: T04's doubt-pass bugs never got
+their own entry.
+
+### Decisions
+
+Full record in repo `docs/decisions.md`'s 2026-07-17 entry.
+
+### Next Actions
+
+- [ ] Re-audit build-log coverage after each future task lands.
+- [ ] Decide serial-vs-concurrent for the remaining Wave B tasks (T05/T05b/T06/T08).

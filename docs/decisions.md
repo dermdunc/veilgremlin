@@ -853,3 +853,49 @@ other 6 predate T04), 5 cross-crate integration tests, 7 conformance tests, 46 d
 the findings were substantive and all got fixed or explicitly classified (contract requirement
 for T05, or an accepted trade-off), not the "diminishing returns" pattern that would call for a
 second round.
+
+## 2026-07-17 - Merged T04 (PR #9); vault sync; fixed a real bug in sync-mirror-to-vault.sh
+
+### Context
+
+PR #9 (T04's implementation, folded together with the task-spec-guidance and T05-dependency
+changes originally on the now-closed PR #8) merged to `main`. Human then asked to sync the
+repo-local mind-palace mirror to the live Obsidian vault, and to confirm the build log is
+genuinely tracking how/why/what this project is building, the way it will need to when
+delivered as part of the final project (matching the coderturtle workshop build-log
+practice).
+
+### Vault sync
+
+Backed up the vault (`~/hekton/scripts/backup-obsidian-vault.sh`) before syncing, per Hekton's
+standing policy. Ran `scripts/sync-mirror-to-vault.sh`: it correctly copied the refreshed
+`session-log.md` onto disk, but its own `git add` line staged nothing at all, silently. Root
+cause: the `git add` command listed `index.md`, `decisions.md`, and `session-log.md` — but
+`decisions.md` is deliberately never mirrored to the vault (per this same script's own
+`SUMMARY_FILES` array and boundary-rule comment, only 2 files). `git add` aborts the *entire*
+command when any one pathspec doesn't match a file, so nothing got staged, and the subsequent
+`git commit` silently did nothing — while the script still printed a false-positive "Committed
+scoped vault update" message, since it never checks either command's exit status. Fixed the
+script (`git add` now lists only the two files `SUMMARY_FILES` actually mirrors) and manually
+staged/committed the pending vault update.
+
+### Build-log coverage audit
+
+Reviewed `docs/build-log/` against the actual work done to confirm it holds up as a real
+delivered artifact, not just a backfilled list. Found one real gap: T04's own build-log entry
+(written by the dispatching agent, describing its no-compiler-available constraint) predates
+the subsequent Codex doubt-pass and never mentions the three real bugs that pass found, or the
+minor self-report inaccuracy the fact-check pass caught. Added a second T04 entry,
+"Three bugs a compiler would never have caught," covering that story specifically — matching
+this log's own rule that a clean success is worth one line, but a caught wrong assumption is
+the actual story worth telling in full.
+
+### Decision
+
+The build log is confirmed to cover, for every material task to date (scaffold through T04):
+what was built, why (the real decision/tension behind it), and how (the actual mechanism —
+dispatch failure modes, review rounds, fixes). It lives directly in this public repo's
+`docs/build-log/`, so it ships with the project automatically — no separate publish step
+required, unlike the Workshop Gremlin's Astro/Pages pattern, since VeilGremlin doesn't (yet)
+have or need a standalone site for it. Re-audit this coverage after each future task, not just
+at the end.

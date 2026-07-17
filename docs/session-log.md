@@ -631,3 +631,97 @@ needed regenerating for the two new dependencies). `cargo clippy --workspace
 reformatting (file had never been run through `cargo fmt`), applied. Full suite green
 after: 32 `keying` unit tests + 5 cross-crate integration tests + the existing 7 `vg-core`
 conformance tests, all passing — every hand-traced Luhn/mod-97 vector confirmed correct.
+
+## Session: T04 doubt-pass, tollgate approval, PR consolidation, and merge
+
+### What happened
+
+Ran a Codex cross-model adversarial review on T04's diff before submitting for tollgate
+approval. Found and fixed 3 real bugs: an `EntityType::Custom` HMAC collision (different
+dictionary names with similar display formatting keyed identically), compact-vs-spaced
+IBAN/sort-code/phone values canonicalising to different placeholders (a direct violation
+of "same value -> same placeholder"), and `PlaceholderKey`'s `Debug` impl leaking the
+full HMAC hex. Fixed a documentation gap in `iban_mod97_is_valid`'s scope. Found and
+recorded (not fixable in T04 alone) a real cross-task interface gap: T05's `VaultStore`
+must reseed `Keyer`'s ordinal counters from persisted vault state, added as a hard
+requirement in T05's own acceptance criteria and `depends_on`.
+
+Ran a second Codex pass fact-checking the dispatch's own self-reported output file
+against the actual repo state — mostly found expected drift (the report predates the
+fixes above), but caught one genuine, if minor, inaccuracy in the original self-report
+(undercounted its own decisions.md entry's judgment calls, 5 vs. the actual 6) and one
+real error in **my own** documentation (`docs/decisions.md` said "37 keying unit tests"
+when 37 is `vg-core`'s total unit-test count, 31 of which are keying-specific) — fixed.
+
+Tollgate-approved by the human via `gateway-review.sh`, which hit the same RISK-0017
+output-path bug as T03 (worked around identically: a placeholder file at the wrong path
+pointing to the real output location, not a fix at the root).
+
+While preparing to apply the diff, discovered that an earlier `dag gen-specs` invocation
+(scoped `--root` to the T04 worktree) had actually written its output to the **real**
+veilgremlin repo instead, due to the tool resolving output paths from
+`.hekton/project.yaml`'s canonical path rather than respecting `--root`. Caught
+immediately via `git status`; the actual content it wrote (a T05-on-T04 DAG dependency
+addition) was legitimate and intentional, so reconciled by applying the same edit
+properly to the real repo's own `veilgremlin-dag.toml` rather than reverting it.
+
+Consolidated PR #8 (T04's task-spec-guidance expansion + the T05 dependency addition)
+into PR #9 (T04's actual implementation), since both ended up touching the same DAG
+content; closed #8 as superseded. Merged #9. `git-guardrail` blocked the `Cargo.lock`-
+touching commit from an agent session as designed; the human ran it directly.
+
+### Decisions
+
+Full record in `docs/decisions.md`'s 2026-07-17 entries (the doubt-driven-development
+subsection under T04, and the separate "Merged T04; vault sync; fixed a real bug in
+sync-mirror-to-vault.sh" entry below this session's later work).
+
+### Risks
+
+T05 (`vg-vault`, not yet built) has a new hard acceptance-criterion requirement (ordinal
+reseeding from persisted state) that must not be silently skipped — see `docs/next-actions.md`.
+
+### Next Actions
+
+- Human: review/merge (done — PR #9 merged 2026-07-17T17:36:55Z).
+- Decide serial-vs-concurrent for the remaining Wave B tasks (T05/T05b/T06/T08).
+
+### Validation status
+
+- Full workspace verify chain re-confirmed green in the real repo after the tollgate
+  applied the diff and after folding in the consolidated DAG changes: `cargo build
+  --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check && cargo
+  test` — 37 `vg-core` unit tests (31 keying-specific), 5 integration tests, 7
+  conformance tests, 46 detector tests, 1 latency-gate test, all green.
+
+## Session: Merged PR #9; vault sync; audited and closed a build-log coverage gap
+
+### What happened
+
+Merged PR #9 to `main`. Backed up the Obsidian vault (`~/hekton/scripts/backup-obsidian-vault.sh`)
+and ran `scripts/sync-mirror-to-vault.sh` to push the refreshed mirror `session-log.md` to
+the live vault — this project's vault entry hadn't been synced since before T01, so it was
+a large catch-up. The script copied the file correctly but its `git add` line silently
+staged nothing (see `docs/decisions.md` for the root cause and fix): fixed the script,
+manually staged/committed the pending vault update.
+
+Human asked to confirm the build log genuinely tracks how/why/what this project is
+building, since it needs to ship as part of the final delivered project the way the
+coderturtle workshop build-logs do. Audited `docs/build-log/`'s 8 existing entries against
+the actual work done and found one real gap: the T04 entry (written by the dispatching
+agent) predates the subsequent doubt-pass and never mentions the 3 real bugs found there.
+Added a second T04 entry covering that story specifically.
+
+### Decisions
+
+Full record in `docs/decisions.md`'s 2026-07-17 entry, "Merged T04 (PR #9); vault sync;
+fixed a real bug in sync-mirror-to-vault.sh."
+
+### Next Actions
+
+- Re-audit build-log coverage after each future task lands, not just retroactively.
+- Decide serial-vs-concurrent for the remaining Wave B tasks (T05/T05b/T06/T08) — still open.
+
+### Validation status
+
+- Docs/script-only change this session; no Rust code touched.

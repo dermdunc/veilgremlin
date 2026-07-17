@@ -204,3 +204,39 @@ changes:
       - "docs/next-actions.md"
       - "docs/session-log.md"
       - "docs/build-log/README.md"
+
+  - id: CHG-0011
+    date: 2026-07-17
+    title: "Task T04: typed-placeholder + HMAC keying, reviewed and hardened via a Codex cross-model doubt-pass"
+    intent: "Implement crates/vg-core/src/keying.rs (canonicalisation, salted HMAC keying, per-namespace/per-type ordinals, Luhn/mod-97 validators, session cache) plus a cross-crate integration test against real T03 detector output. Dispatched headless with no compiler access in-session; hand-traced carefully, verified clean during review. A Codex cross-model doubt-pass found and fixed 3 real bugs (Custom-type HMAC collision, compact-vs-spaced IBAN/sort-code/phone keying differently, PlaceholderKey's Debug leaking the real HMAC hex) plus a documentation gap, and found a real cross-task interface gap now recorded as a hard requirement in T05's acceptance criteria."
+    changed_by: "claude (build + review) + codex (cross-model doubt-pass + self-report fact-check)"
+    change_type: build
+    risk_level: medium
+    validation:
+      - "cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check && cargo test: PASS, 37 vg-core unit tests (31 keying-specific), 5 integration tests, 7 conformance tests, 46 detector tests, 1 latency-gate test"
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    links:
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"
+      - "https://github.com/dermdunc/veilgremlin/pull/9"
+
+  - id: CHG-0012
+    date: 2026-07-17
+    title: "Fixed a real bug in scripts/sync-mirror-to-vault.sh (silent no-op commit)"
+    intent: "The script's git add line listed decisions.md alongside index.md/session-log.md, but decisions.md is deliberately never mirrored to the vault (per the script's own SUMMARY_FILES array). git add aborts entirely when any pathspec doesn't match, so nothing was ever staged, and the script's own success message was a false positive it never checked for. Fixed to stage only the two files actually mirrored; manually completed the pending vault sync for veilgremlin after the fix."
+    changed_by: "claude (interactive session)"
+    change_type: build
+    risk_level: low
+    validation:
+      - "Manually verified: git log in ~/vaults/hekton-mind-palace confirms the commit landed after the fix"
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    links:
+      - "docs/decisions.md"
+      - "docs/session-log.md"

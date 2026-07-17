@@ -347,3 +347,62 @@ agent_runs:
     next_actions:
       - "Add a build-log entry as each future task lands, per the new standing rule."
       - "Revisit whether the build log earns a publishable site later."
+  - id: RUN-0011
+    date: 2026-07-17
+    agent: "claude (build) + codex (cross-model doubt-pass + self-report fact-check)"
+    role: "Build Agent"
+    intent: "T04: typed-placeholder + HMAC keying. Headless dispatch (sandbox blocked all cargo/rustc execution; code hand-traced carefully, never compiled in-session). Verified during review: compiled clean, one trivial clippy fix, one fmt pass. Codex cross-model doubt-pass found and fixed 3 real bugs (EntityType::Custom HMAC collision, compact-vs-spaced IBAN/sort-code/phone keying differently, PlaceholderKey's Debug leaking the real HMAC hex) plus a documentation gap; found a real cross-task interface gap (T05 must reseed Keyer's ordinal counters from persisted state), recorded as a hard requirement in T05's own acceptance criteria since vg-vault doesn't exist yet. A second Codex pass fact-checked the dispatch's own self-reported output against actual repo state, catching a minor self-report miscount and one real error in my own decisions.md write-up (mislabeled vg-core's total unit-test count as keying-specific). Tollgate-approved via gateway-review.sh, which hit the same RISK-0017 output-path bug as T03 (worked around identically). Consolidated PR #8 (task-spec-guidance + T05 dependency) into PR #9 (T04's implementation) since both touched the same DAG content; closed #8 as superseded. PR #9 merged."
+    autonomy_level: 3
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    files_touched:
+      - "crates/vg-core/src/keying.rs"
+      - "crates/vg-core/tests/keying_integration.rs"
+      - "crates/vg-core/src/lib.rs"
+      - "crates/vg-core/Cargo.toml"
+      - "Cargo.lock"
+      - ".hekton/veilgremlin-dag.toml"
+      - ".hekton/build-tasks/T04.md"
+      - ".hekton/build-tasks/T05.md"
+      - ".hekton/build-tasks/T04-output.md"
+      - "docs/build-log/README.md"
+      - "docs/build-log/2026-07-17-a-keying-module-built-without-a-compiler-in-the-room.md"
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"
+      - "mind-palace/20-projects/factory-output/veilgremlin/session-log.md"
+    validation:
+      - "cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check && cargo test: PASS, 37 vg-core unit tests (31 keying-specific), 5 integration tests, 7 conformance tests, 46 detector tests, 1 latency-gate test, confirmed in both the worktree and the real repo after the tollgate applied the diff"
+    risks:
+      - "T05 (vg-vault, not yet built) has a new hard acceptance-criterion requirement (ordinal reseeding from persisted state) that must not be silently skipped."
+      - "Accepted residual, not fixed: a dictionary-word passphrase joined by delimiters would also be excluded by the entropy fix (pre-existing, unrelated to T04)."
+    next_actions:
+      - "T05 (vg-vault) should call into Keyer/placeholder_key rather than reimplementing keying, and reseed ordinals from persisted state."
+      - "Decide serial-vs-concurrent for the remaining Wave B tasks (T05/T05b/T06/T08)."
+  - id: RUN-0012
+    date: 2026-07-17
+    agent: "claude (interactive session)"
+    role: "Documentation Agent"
+    intent: "Merged PR #9 to main. Backed up and synced the Obsidian vault (scripts/sync-mirror-to-vault.sh) -- this project's vault entry hadn't been touched since before T01. Found and fixed a real bug in that script: its git add line silently staged nothing because one of its three pathspecs (decisions.md) is deliberately never mirrored to the vault, and git add aborts entirely when any pathspec doesn't match. Audited docs/build-log/'s coverage against actual work done per a human request to confirm it will genuinely track how/why/what this project is building when delivered as part of the final project; found and fixed one real gap (T04's doubt-pass bugs never got their own build-log entry)."
+    autonomy_level: 3
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    files_touched:
+      - "scripts/sync-mirror-to-vault.sh"
+      - "docs/build-log/README.md"
+      - "docs/build-log/2026-07-17-three-bugs-a-compiler-would-never-have-caught.md"
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"
+    validation:
+      - "Docs/script-only change; no Rust code touched"
+      - "Vault sync manually verified: git log confirms the commit landed in ~/vaults/hekton-mind-palace after the script fix"
+    risks:
+      - "None new."
+    next_actions:
+      - "Re-audit build-log coverage after each future task lands, not just retroactively."
+      - "Decide serial-vs-concurrent for the remaining Wave B tasks (T05/T05b/T06/T08)."

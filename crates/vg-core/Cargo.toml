@@ -13,3 +13,13 @@ workspace = true
 thiserror = "1"
 uuid = { version = "1", features = ["v4"] }
 zeroize = "1"
+hmac = "0.12"
+sha2 = "0.10"
+
+[dev-dependencies]
+# Dev-only: lets keying's tests exercise real `Finding`s from `vg-detectors::all_detectors()`
+# (interface-contracts.md acceptance criterion, added 2026-07-16) rather than only hand-built
+# mock values. Not a real dependency cycle — vg-detectors' (non-dev) dependency on vg-core is
+# the only edge in the normal build graph; this edge exists solely for vg-core's own test
+# binary and Cargo resolves dev-dependency cycles like this without issue.
+vg-detectors = { workspace = true }

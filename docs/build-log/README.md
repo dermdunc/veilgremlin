@@ -46,3 +46,4 @@ That can grow into a published site later if it earns one — see
 - [2026-07-15 — The detector that asked a question instead of writing code](2026-07-15-the-detector-that-asked-a-question-instead-of-writing-code.md)
 - [2026-07-16 — Teaching the fan-out to test itself](2026-07-16-teaching-the-fan-out-to-test-itself.md)
 - [2026-07-16 — The fix that was wrong, and how we found out](2026-07-16-the-fix-that-was-wrong-and-how-we-found-out.md)
+- [2026-07-17 — A keying module built without a compiler in the room](2026-07-17-a-keying-module-built-without-a-compiler-in-the-room.md)

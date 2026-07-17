@@ -1,0 +1,11 @@
+$ cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check && cargo test
+(cwd: /Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T04)
+
+--- stdout ---
+
+--- stderr ---
+    Updating crates.io index
+error: cannot update the lock file /Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T04/Cargo.lock because --locked was passed to prevent this
+help: to generate the lock file without accessing the network, remove the --locked flag and use --offline instead.
+
+exit code: 101

@@ -103,8 +103,13 @@ wave = "B"
 depends_on = ["T01", "T02"]
 task_type = "code-implement"
 engine = "claude-cli"
+# 2026-07-16: added a real cross-crate integration requirement after the T03 pilot
+# (dogfooding/latency review). T04's whole job is "take a Finding, produce a
+# placeholder" -- T03 (already closed) is the only real source of Findings that
+# exists. Testing T04 only against hand-built mock Findings would mean the FIRST
+# time it ever sees a real one is T07's full pipeline wiring, several tasks later.
 description = "Typed-placeholder + HMAC keying: canonicalisation, salted HMAC over (value,type,namespace), per-type ordinals, Luhn/mod-97 checksum validators, session cache."
-acceptance = "same value -> same placeholder within namespace; checksum tests pass."
+acceptance = "same value -> same placeholder within namespace; checksum tests pass. ADDED 2026-07-16: at least one integration test must feed real Findings from vg-detectors::all_detectors() (already built, Task T03) through this task's keying logic end to end -- not only hand-built mock Finding values -- to catch a real interface/shape mismatch (e.g. field content, confidence ranges, entity-type coverage) before Task T07's pipeline wiring, not only at it."
 context = ["docs/architecture/interface-contracts.md"]
 
 [[task]]
@@ -113,8 +118,18 @@ wave = "B"
 depends_on = ["T01", "T02"]
 task_type = "code-implement"
 engine = "claude-cli"
+# 2026-07-16: added a real cross-crate integration requirement (same rationale as
+# T04's, see its comment above). This one is the higher-risk pairing: every
+# detector in vg-detectors (Task T03, already closed) already implements
+# `fn detect(&self, buf: &[u8], spans: &[Span]) -> Vec<Finding>` -- but all five
+# CURRENTLY IGNORE the spans parameter entirely (`_spans` in every signature,
+# confirmed 2026-07-16). Nobody has yet exercised a real Span this task produces
+# against a real detector's actual (currently no-op) handling of it. This is
+# exactly the kind of interface-shape-matches-but-behavior-doesn't-connect risk
+# that only surfaces when two independently-built crates are wired together for
+# real, and T07 (pipeline wiring) is the earliest point that would otherwise happen.
 description = "File-aware parsing: logs, git diffs, JSON/YAML, .env; tree-sitter for one source language; emit Span model to detectors."
-acceptance = "parser tests on fixtures; spans typed; error-tolerant on malformed input."
+acceptance = "parser tests on fixtures; spans typed; error-tolerant on malformed input. ADDED 2026-07-16: at least one integration test must feed this task's real Span output into vg-detectors::all_detectors() (Task T03) on a realistic fixture, and explicitly assert/record whether the detectors' current spans parameter being a no-op is expected at this stage or a real gap worth flagging in docs/decisions.md -- don't let this go unnoticed until Task T07."
 context = ["docs/architecture/interface-contracts.md"]
 
 # --- Epic E3 — State, policy, evidence (Wave B, parallel) ------------------
@@ -167,8 +182,15 @@ wave = "C"
 depends_on = ["T07"]
 task_type = "code-implement"
 engine = "claude-cli"
+# 2026-07-16: added an explicit UX-latency criterion after the T03 pilot's
+# dogfooding/latency review. Every acceptance criterion up to this point is
+# functional (round trip works, gate denies correctly, help text exists) -- none of
+# them test the actual product goal that this is meant to be an INVISIBLE control.
+# T09 is the earliest point that goal is even testable for real (hooks wired into a
+# real Claude Code session), so it shouldn't ship without someone actually noticing
+# whether it's noticeable.
 description = "vg CLI + Claude Code adapter: run/inspect/diff --masked/demask/audit/policy/vault commands; hooks (UserPromptSubmit/PreToolUse/PostToolUse) + wrapper; Bedrock masked-request path; pre-send summary; explicit demask gate."
-acceptance = "masked round trip to Bedrock path; demask gate denies remote_model_prompt; CLI help complete."
+acceptance = "masked round trip to Bedrock path; demask gate denies remote_model_prompt; CLI help complete. ADDED 2026-07-16: a human runs a real interactive Claude Code session with the hooks wired in against realistic prompts/tool output containing masking-worthy content, and explicitly confirms no perceptible added latency or workflow friction -- record the session and the human's honest verdict in docs/decisions.md, not just a benchmark number. If it IS perceptible, that's a real finding to fix or escalate, not a criterion to quietly relax."
 context = ["docs/architecture/interface-contracts.md"]
 
 # --- Epic E5 — Evaluation & gate (Wave D) -----------------------------------

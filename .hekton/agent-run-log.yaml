@@ -254,3 +254,62 @@ agent_runs:
       - "Human: review/merge the T03 PR once opened."
       - "Decide serial-vs-concurrent for T04/T05/T05b/T06/T08 now that the rework loop and RISK-0016 are both proven for real."
       - "engine-gateway-lab RISK-0017 needs a real fix before the next Wave B tollgate."
+  - id: RUN-0008
+    date: 2026-07-16
+    agent: "claude (interactive session) + codex (planning pass)"
+    role: "Build Agent"
+    intent: "Merged the T03 PR and engine-gateway-lab's RISK-0017 PR; reviewed the fan-out phases against VeilGremlin's actual goal (invisible PII masking, trading-system latency discipline); added a real CI-enforced latency-regression gate ahead of T10; added cross-crate integration acceptance criteria to T04/T08 and a human UX-verification criterion to T09; ran a Codex planning pass (not review) on a dogfooding strategy and reconciled it; built and ran a read-only detector census against 197 real files, surfacing a genuine entropy/phone false-positive precision problem not yet decided."
+    autonomy_level: 3
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    files_touched:
+      - "crates/vg-detectors/tests/latency_gate.rs"
+      - "crates/vg-detectors/examples/census.rs"
+      - "crates/vg-detectors/benches/detectors.rs"
+      - ".hekton/veilgremlin-dag.toml"
+      - ".hekton/build-tasks/T04.md"
+      - ".hekton/build-tasks/T08.md"
+      - ".hekton/build-tasks/T09.md"
+      - "docs/architecture/work-breakdown.md"
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"
+    validation:
+      - "cargo test -p vg-detectors: PASS, including the new latency_gate.rs test (p95 well within the 4x CI-safe margin over the 25ms budget)"
+      - "cargo clippy --all-targets -- -D warnings && cargo fmt --check: PASS after fixing 2 clippy findings (unnecessary_sort_by, manual_checked_ops) in the new census.rs example"
+      - "Census run: 197 files, 11.2ms total latency, 0 unreadable; entropy/phone false-positive hypothesis manually verified against engine-gateway-lab's own session-log.md content"
+      - "Full workspace verify chain (build --locked && clippy && fmt --check && test) re-run before opening this round's PR"
+    risks:
+      - "Entropy and phone detectors are dominated by false positives on Hekton's own operational-ID and date shapes (2468 and 783 findings respectively out of 197 files) -- a real, evidenced precision problem, not fixed or guessed at this session; needs a human product decision before T06/T07."
+    next_actions:
+      - "Human decision needed: how to address the entropy/phone false-positive rate before T06 (policy)/T07 (pipeline) go live."
+      - "Re-run the census as each Wave B/C task lands, per the Codex plan's ladder."
+      - "Serial-vs-concurrent decision for the remaining Wave B tasks (T04/T05/T05b/T06/T08) still open."
+  - id: RUN-0009
+    date: 2026-07-16
+    agent: "codex (planning pass) + claude (implement + measure)"
+    role: "Build Agent"
+    intent: "Ran a Codex planning pass on the three open false-positive-fix options (allowlist/tighter heuristics/defer to T10); Codex recommended a hybrid (fix detectors now, keep T10 as the formal gate), read against the actual frozen contracts. Implemented PhoneDetector's ISO-date exclusion and EntropyDetector's structured-identifier exclusion. The entropy fix required a mid-session correction after measuring it against real content showed the first version (targeting Hekton run-ID shapes) barely worked; corrected to a generic path/identifier-shape exclusion. Measured a real, isolated before/after (git stash) on unchanged engine-gateway-lab content: entropy -90%, phone -91%, latency unaffected."
+    autonomy_level: 3
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    files_touched:
+      - "crates/vg-detectors/src/entropy.rs"
+      - "crates/vg-detectors/src/phone.rs"
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"
+    validation:
+      - "cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check && cargo test: PASS, 46 tests green in vg-detectors (5 new)"
+      - "Isolated before/after census measurement via git stash on identical engine-gateway-lab content: entropy 1849->182 (-90%), phone 618->54 (-91%)"
+      - "Latency confirmed unaffected (10.19ms/197 files combined-repo census, vs 11.2ms before)"
+    risks:
+      - "Accepted residual, not fixed: a dictionary-word passphrase joined by delimiters (e.g. correct-horse-battery-staple) would also be excluded by the entropy fix -- indistinguishable from a real identifier without a semantic check this detector doesn't have."
+      - "Remaining ~10% of entropy/phone findings left for T10's formal false_positive_rate gate, per the hybrid decision, not a new unflagged gap."
+    next_actions:
+      - "Re-run the census as each Wave B/C task lands."
+      - "Serial-vs-concurrent decision for the remaining Wave B tasks still open."

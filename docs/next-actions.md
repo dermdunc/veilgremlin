@@ -127,3 +127,38 @@ Repo source-of-truth for the work queue. Tasks T01–T11 are defined in [`archit
 - [ ] `engine-gateway-lab` RISK-0017 (gateway-review.sh's output-path resolution breaks for
       ACT-dispatched cross-repo worktree tasks) needs a real fix before the next Wave B
       tollgate — worked around for T03, not fixed at the root.
+
+## Session Update: 2026-07-16 — Fan-out review, Codex dogfooding plan, real latency gate, real detector census
+
+- [x] T03 PR merged; RISK-0017 documented and merged in `engine-gateway-lab`.
+- [x] Added a real, CI-enforced latency-regression gate (`crates/vg-detectors/tests/latency_gate.rs`)
+      instead of waiting for T10 — plain `#[test]`, runs on every PR already.
+- [x] Added cross-crate integration requirements to T04, T08's acceptance criteria (both pair
+      concretely with the already-closed T03) and a UX-latency human-verification criterion to
+      T09's. See `.hekton/veilgremlin-dag.toml` and `docs/architecture/work-breakdown.md`.
+- [x] Codex planning pass on dogfooding strategy — full reconciliation in `docs/decisions.md`
+      2026-07-16 entries.
+- [x] Built and ran `crates/vg-detectors/examples/census.rs` (read-only, no matched values ever
+      printed/stored) against 197 real files across VeilGremlin + `engine-gateway-lab`. **Real
+      finding, not yet resolved:** entropy (2468 hits) and phone (783 hits) detectors are
+      dominated by false positives on Hekton's own operational IDs (`run-YYYYMMDD-EG-NNN` shapes)
+      and dates — verified by hand against the actual repo content. Latency itself is fine
+      (11.2ms / 197 files). Full detail and the open design question (allowlist? tighter
+      heuristics? measure via T10's `false_positive_rate` metric?) in `docs/decisions.md`.
+- [x] **Human decision made:** ran the three options through a Codex planning pass
+      (reconciled in `docs/decisions.md`), which recommended a hybrid — fix the two
+      dominant detector-level false positives now, keep T10 as the formal gate. Human
+      approved. Implemented and measured: entropy false positives -90%, phone -91% on
+      identical `engine-gateway-lab` content (isolated before/after). A first attempt at
+      the entropy fix targeted the wrong shape (assumed Hekton run-IDs; real dominant
+      class was file paths + snake_case/kebab-case identifiers) — caught by measuring
+      against real content rather than shipping on the unverified assumption. See
+      `docs/decisions.md`.
+- [ ] Re-run `cargo run --example census -- <paths>` as each Wave B/C task lands, per the Codex
+      plan's ladder (detector-only now → parser+detector after T08 → stubbed mini-pipeline after
+      T04/T05/T06/T05b → real `mask()` after T07 → real dogfood after T09).
+- [ ] Decide serial-vs-concurrent for the remaining Wave B tasks (T04/T05/T05b/T06/T08) — still
+      open from the prior session update above.
+- [ ] Residual ~10% entropy/phone false positives left for T10's formal
+      `false_positive_rate` measurement, per the hybrid decision — not a new gap, the
+      accepted remainder.

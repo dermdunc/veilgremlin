@@ -74,3 +74,77 @@ worked around for T03, not fixed at the root.
 - [ ] Note for a future mirror-sync session: this mirror was found missing T02's entire
       session entry before this update (pre-existing drift, not introduced this session) --
       flagged rather than silently backfilled.
+
+## Session: Fan-out testing-strategy review + real CI latency gate + Codex dogfooding plan + real detector census
+
+**Date:** 2026-07-16
+
+### What Changed
+
+Merged T03's PR and `engine-gateway-lab`'s RISK-0017 PR. Reviewed the fan-out phases
+against VeilGremlin's actual goal (invisible PII masking, trading-system latency
+discipline) and found 3 real testing-strategy gaps: T04/T08 had no requirement to
+integration-test against T03's real `Finding`/`Span` output (mocks only), and T09 had no
+point where a human confirms the "invisible control" goal is actually met. Added a real,
+CI-enforced latency-regression gate (`tests/latency_gate.rs`) ahead of T10. Ran a Codex
+planning pass (explicitly not a review) on a dogfooding strategy, reconciled in
+`docs/decisions.md`. Built and ran a read-only detector census against 197 real Hekton
+files.
+
+### Decisions
+
+Full record in repo `docs/decisions.md`'s 2026-07-16 entry.
+
+### Assumptions
+
+None beyond what the census run and the manual false-positive verification directly
+showed.
+
+### Risks
+
+Entropy (2468 findings) and phone (783 findings) detectors are dominated by false
+positives on Hekton's own operational-ID and date shapes -- a real, evidenced precision
+problem, not fixed or guessed at this session; needs a human product decision before
+T06/T07.
+
+### Next Actions
+
+- [x] Human decision made: ran the three options through a Codex planning pass
+      (hybrid recommended, approved); fixed and measured (entropy -90%, phone -91% on
+      isolated identical content).
+- [ ] Re-run the census as each Wave B/C task lands.
+- [ ] Serial-vs-concurrent decision for the remaining Wave B tasks still open.
+
+## Session: Fixed the entropy/phone false-positive finding (Codex-planned, hybrid, measured)
+
+**Date:** 2026-07-16
+
+### What Changed
+
+Ran the census's open false-positive question through a Codex planning pass; Codex
+recommended a hybrid (fix detectors now, keep T10 as the formal gate) after reading the
+actual frozen contracts. Implemented `PhoneDetector`'s ISO-date exclusion and
+`EntropyDetector`'s structured-identifier exclusion. The entropy fix needed a
+mid-session correction: the first version assumed Hekton's own run-ID shapes were
+dominant and barely helped when measured; the real dominant classes were file paths and
+snake_case/kebab-case identifiers, fixed generically.
+
+### Decisions
+
+Full record, including the mid-session correction, in repo `docs/decisions.md`'s
+2026-07-16 entry.
+
+### Assumptions
+
+None beyond what the isolated before/after measurement (via `git stash` on identical
+`engine-gateway-lab` content) directly showed.
+
+### Risks
+
+Accepted residual: a dictionary-word passphrase joined by delimiters would also be
+excluded by the entropy fix. Remaining ~10% of findings left for T10's formal gate.
+
+### Next Actions
+
+- [ ] Re-run the census as each Wave B/C task lands.
+- [ ] Serial-vs-concurrent decision for the remaining Wave B tasks still open.

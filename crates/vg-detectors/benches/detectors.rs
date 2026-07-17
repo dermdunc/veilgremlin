@@ -1,8 +1,14 @@
 //! Criterion bench for the five T03 detectors against a synthetic reference buffer,
 //! checking the interface contract's p95 < 25ms hot-path budget
 //! (`docs/architecture/interface-contracts.md` §3). CI only compile-checks this
-//! (`cargo bench --workspace --locked --no-run`); running it for real is a manual/local
-//! step until Task T10 wires up baseline management.
+//! (`cargo bench --workspace --locked --no-run`); running it for real (precise,
+//! statistically-sound measurement) is a manual/local step until Task T10 wires up real
+//! baseline management.
+//!
+//! `tests/latency_gate.rs` is the coarse, CI-enforced companion to this bench: a plain
+//! `#[test]` (so it runs on every PR via the existing `cargo test` CI job, no new CI
+//! config needed) that fails loudly on a gross regression, without needing this
+//! criterion bench to be run by a human first.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use vg_detectors::all_detectors;

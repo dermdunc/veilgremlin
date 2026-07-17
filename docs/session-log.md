@@ -391,3 +391,125 @@ the wrong path, not fixed at the root this session.
   cargo test`: PASS, 41 tests green in `vg-detectors`, confirmed in both the worktree and the
   real repo after the tollgate applied the diff.
 - Criterion bench: ~0.62ms against the 25ms p95 budget.
+
+## Session: Fan-out testing-strategy review + real CI latency gate + Codex dogfooding plan + real detector census
+
+### What happened
+
+Human asked to merge the T03 PR, get a status report, and review the fan-out phases
+against VeilGremlin's actual goal (mask PII by design, be an invisible control, treat
+latency with trading-system discipline). Merged T03's PR (#5) and `engine-gateway-lab`'s
+RISK-0017 PR (#25). Reviewed `interface-contracts.md`'s real budget (p95 < 25ms, not
+microseconds — clarified the "sub-microsecond trading system" framing as a *discipline*
+of tail-latency awareness and CI enforcement, not a literal target humans could perceive
+anyway) and found three real gaps in how Wave B/C tasks would test against each other:
+
+- T04 (keying) and T08 (parsers) had no requirement to integration-test against T03's
+  real `Finding`/`Span` output, only mock values — a real interface/shape mismatch could
+  survive until T07 wires everything together.
+- T09 (CLI/hooks) had no point where a human actually confirms the "invisible control"
+  goal is met — latency budgets are necessary but not sufficient for "doesn't affect UX."
+- There was no cheap, continuous way to exercise the real detectors against real content
+  before T10's formal eval harness exists.
+
+### Changes made
+
+- Added a real, CI-enforced latency-regression gate (`crates/vg-detectors/tests/latency_gate.rs`,
+  plain `#[test]`, 4x CI-safe slack over the 25ms budget) so every PR checks this now
+  instead of waiting for T10.
+- Added cross-crate integration acceptance criteria to T04 and T08, and a human
+  UX-latency-verification criterion to T09, in `.hekton/veilgremlin-dag.toml` (source of
+  truth) and regenerated `.hekton/build-tasks/{T04,T08,T09}.md`; mirrored in
+  `docs/architecture/work-breakdown.md`.
+- Asked a Codex subagent to plan (not review — explicitly a planning task) how to
+  dogfood VeilGremlin as it's built, to benchmark and find edge cases early. Reconciled
+  its plan against the actual codebase in `docs/decisions.md`; its independent conclusion
+  matched the plain-`#[test]` latency-gate design already chosen.
+- Built and ran `crates/vg-detectors/examples/census.rs`, a read-only tool (never prints
+  or stores matched values, only counts/spans/entity-types/latency) against 197 real
+  files across VeilGremlin and `engine-gateway-lab`.
+
+### Census findings
+
+Latency is fine: 11.2ms total across 197 files (0.057ms/file avg). But entropy (2468
+findings) and phone (783 findings) detectors are dominated by false positives — verified
+by hand that `engine-gateway-lab/docs/session-log.md` contains real `run-YYYYMMDD-EG-NNN`
+shaped operational IDs that are exactly the byte-length/mixed-character shape the entropy
+detector was tuned to catch. This is a genuine, evidenced precision problem, not a
+latency problem, and it is **not decided or guessed at this session** — see Next Actions.
+
+### Decisions
+
+Full record (latency-gate design, DAG acceptance-criteria additions, Codex plan
+reconciliation, and the census finding) in `docs/decisions.md`'s 2026-07-16 entry.
+
+### Next Actions
+
+- **Human decision needed:** how to address the entropy/phone false-positive rate before
+  T06 (policy)/T07 (pipeline) go live — options include an operational-ID allowlist,
+  tighter entropy heuristics, or deferring to T10's formal `false_positive_rate` metric.
+  Not a call to make without the human.
+- Re-run the census as each Wave B/C task lands, per the Codex plan's ladder
+  (detector-only now -> +parsers after T08 -> stubbed mini-pipeline after
+  T04/T05/T06/T05b -> real `mask()` after T07 -> real dogfood after T09).
+- Serial-vs-concurrent for the remaining Wave B tasks (T04/T05/T05b/T06/T08) is still
+  open from the prior session.
+
+### Validation status
+
+- `cargo test -p vg-detectors`: PASS, including the new `latency_gate.rs` test
+  (p95 well within the 4x CI-safe margin).
+- `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check`: PASS after fixing
+  2 clippy findings in the new `census.rs` example.
+- Full workspace verify chain re-confirmed before opening the PR (#6) for this round.
+
+## Session: Fixed the entropy/phone false-positive finding (Codex-planned, hybrid, measured)
+
+### What happened
+
+Asked Codex to plan out the three open options from the census finding (allowlist,
+tighter heuristics, defer to T10) before deciding. Codex read the actual frozen
+`PolicyEngine`/`Detector` contracts and the real detector code, then recommended a
+hybrid: fix the two dominant detector-level false positives now, keep T10 as the formal
+gate, and explicitly deprioritized a policy-layer allowlist (no per-finding hook in the
+frozen contract; a regex allowlist is also a potential bypass-surface risk). Human
+approved the hybrid.
+
+Implemented `looks_like_iso_date` in `PhoneDetector` (excludes strict `YYYY-MM-DD`
+shapes) and `is_structured_identifier` in `EntropyDetector`. The entropy fix needed a
+mid-session correction: the first version assumed Hekton's own `run-YYYYMMDD-EG-NNN` run
+IDs were the dominant shape (matching the census's original hypothesis) and barely
+moved the needle when measured (1 of 1849 findings removed on real `engine-gateway-lab`
+content, via a temporary local debug print, never committed). The real dominant classes
+were file paths and snake_case/kebab-case identifiers — corrected to a generic
+delimiter-splitting rule (segments must be purely alphabetic or purely numeric) that
+catches both shapes without a Hekton-specific dictionary.
+
+### Measured impact (isolated before/after via `git stash` on identical, untouched
+`engine-gateway-lab` content)
+
+```
+                 before   after
+entropy          1849     182    (-90%)
+phone            618      54     (-91%)
+```
+
+Latency unaffected. The remaining ~10% is left for T10's formal `false_positive_rate`
+gate, per the hybrid decision, not silently ignored.
+
+### Decisions
+
+Full record, including the mid-session correction and why "measure on real content, not
+theory" mattered here concretely, in `docs/decisions.md`'s 2026-07-16 entry.
+
+### Next Actions
+
+- Re-run the census as each Wave B/C task lands (still open from the prior session).
+- Serial-vs-concurrent decision for the remaining Wave B tasks still open.
+
+### Validation status
+
+- `cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check
+  && cargo test`: PASS, 46 tests green in `vg-detectors` (5 new: 2 phone date-exclusion,
+  3 entropy structured-identifier tests, built from the real false-positive examples
+  found).

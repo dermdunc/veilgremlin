@@ -725,3 +725,68 @@ fixed a real bug in sync-mirror-to-vault.sh."
 ### Validation status
 
 - Docs/script-only change this session; no Rust code touched.
+
+## 2026-07-17 — T05 built: SQLCipher `VaultStore` in `vg-vault` (headless dispatch, no compiler reachable)
+
+Implemented `vg_core::traits::VaultStore` in `crates/vg-vault` (previously an empty stub crate),
+plus the one additive `vg-core` change the requirement forced (`Keyer::seed_ordinal`). As with T04,
+no Rust toolchain was reachable in the dispatch environment (`cargo` is gated behind interactive
+approval a headless run can't satisfy), so this is left for a compile/clippy/test pass at PR review.
+
+### What changed / created
+
+- `crates/vg-vault/src/lib.rs` — `Vault` struct + `VaultConfig`; `VaultStore` impl (`intern`/
+  `resolve`/`purge_expired`); `Vault::open` (keychain-wrapped key) and `Vault::open_with_key`
+  (caller-supplied key, for tests); `demask_event_count`/`mapping_count` helpers; a compile-time
+  `Send + Sync` assertion.
+- `crates/vg-vault/src/schema.rs` — SQLCipher DDL: `meta`, `mapping` (with a UNIQUE index on the
+  per-namespace/type ordinal), `demask_event`.
+- `crates/vg-vault/src/keychain.rs` — OS-keychain wrap of the 32-byte DB key via `keyring`
+  (generate-on-first-use, hex-encoded), with hex codec unit tests.
+- `crates/vg-vault/src/codec.rs` — round-trippable `Namespace`/`EntityType` ↔ column encoding
+  (needed so the reseed can reconstruct real keys), with round-trip unit tests.
+- `crates/vg-vault/src/random.rs`, `src/error.rs` — CSPRNG helper (`getrandom`) and `VaultError`
+  mapping.
+- `crates/vg-vault/Cargo.toml` — added `rusqlite` (`bundled-sqlcipher-vendored-openssl`), `keyring`,
+  `uuid`, `getrandom`; `tempfile` dev-dep.
+- `crates/vg-vault/tests/vault.rs` — integration tests: `assert_vault_roundtrip` conformance,
+  stable placeholder, sequential ordinals, **ordinal continuity across reopen** (the T05 hard
+  requirement), value persistence, namespace isolation, demask logging, TTL purge, wrong-key open
+  failure, session-namespace round-trip.
+- `crates/vg-core/src/keying.rs` — added `Keyer::seed_ordinal` (additive; not a frozen-contract
+  change) plus three unit tests. This is the reseed hook T04 flagged as required for T05.
+
+### Decisions / assumptions
+
+Nine recorded in `docs/decisions.md` (2026-07-17 T05 entry) — key ones: reseed via a new additive
+`Keyer::seed_ordinal`; `intern` uses non-mutating `placeholder_key` for the lookup and only mints an
+ordinal via `key_for` for genuinely-new values; `prepare_cached` is the "cache prepared statements"
+mechanism; SQLCipher whole-DB encryption is the value-at-rest cipher (no redundant app-level layer);
+per-install random salt in an encrypted `meta` table; `resolve` returns `NotFound` for both namespace
+mismatch and expiry.
+
+### Risks
+
+- RISK-0006 (vault key mishandling / plaintext at rest): materially advanced — this is the code that
+  wraps the DB key in the keychain and never writes it plaintext. Not yet verified by a build/run.
+
+### Next actions
+
+- PR-review compile pass: `cargo build --locked && cargo clippy --all-targets -- -D warnings &&
+  cargo fmt --check && cargo test -p vg-core -p vg-vault`. Needs a C toolchain + perl for the
+  vendored-OpenSSL/SQLCipher build.
+- Consider a cross-model doubt-pass on the reseed/intern ordinal logic (the subtle part), as was
+  done for T04.
+
+### Validation status
+
+Not compiled or tested in the dispatch session (no reachable toolchain).
+
+**Verified during PR review (2026-07-17):** `bundled-sqlcipher-vendored-openssl` compiled clean;
+full chain green after two fixes (a trivial `.is_multiple_of` clippy lint; a missing — and now
+redacting, salt-safe — `Debug` on `Vault`). A Codex cross-model doubt-pass found and fixed one
+real correctness bug (`intern` could return an expired-but-unpurged placeholder that `resolve`
+rejects — now renewed in place) plus two reconciled design points (`resolve` audits denied
+demasks by design; the `UNIQUE` ordinal index defends a cross-process race). 40 vg-core + 6
+vg-vault unit + 14 vault integration tests green. Full record in `docs/decisions.md`.
+Mind-palace updated: no (proposed — sync at PR merge, as with prior tasks).

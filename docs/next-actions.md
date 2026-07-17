@@ -218,3 +218,27 @@ Repo source-of-truth for the work queue. Tasks T01–T11 are defined in [`archit
 - [ ] Re-audit build-log coverage after each future task lands.
 - [ ] Decide serial-vs-concurrent for the remaining Wave B tasks (T05/T05b/T06/T08) —
       still open.
+
+## Session Update: 2026-07-17 — T05 (`vg-vault`) built (headless dispatch, no compiler reachable)
+
+- [x] Implemented `vg_core::traits::VaultStore` in `crates/vg-vault` (SQLCipher via `rusqlite`
+      vendored-OpenSSL, OS-keychain-wrapped DB key, per-install salt, TTL purge, cached prepared
+      statements, `demask_event` audit log). Modules: `lib`, `schema`, `keychain`, `codec`,
+      `random`, `error`; integration tests in `tests/vault.rs`.
+- [x] **Satisfied the T04-flagged hard requirement:** `Keyer` ordinal counters are reseeded from
+      the vault's persisted `mapping` rows at open, so ordinals don't collide/drift across process
+      restarts. Required one additive `vg-core` change — `Keyer::seed_ordinal` — since T04's `Keyer`
+      exposed no reseed hook (not a frozen-contract change; `Keyer` isn't in `interface-contracts.md`
+      §0–§8). Covered by an integration test that opens → drops → reopens → asserts continuity.
+- [x] `intern` calls `vg-core`'s `placeholder_key`/`Keyer::key_for` (no reimplemented HMAC);
+      `resolve` returns `NotFound` for both namespace mismatch and expiry; nine judgment calls
+      recorded in `docs/decisions.md`.
+- [ ] **PR-review compile/test pass (not yet run — no toolchain in dispatch):**
+      `cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check &&
+      cargo test -p vg-core -p vg-vault`. Needs a C toolchain + perl for the vendored
+      OpenSSL/SQLCipher build.
+- [ ] Optional but recommended: cross-model doubt-pass on the reseed + look-up-before-mint ordinal
+      logic (the subtle part), as done for T04.
+- [ ] Re-audit build-log coverage (a T05 entry was added:
+      `2026-07-17-the-vault-that-had-to-remember-its-counting.md`).
+- [ ] Decide serial-vs-concurrent for the remaining Wave B tasks (T05b/T06/T08) — still open.

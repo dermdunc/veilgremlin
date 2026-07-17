@@ -253,3 +253,26 @@ Full record in repo `docs/decisions.md`'s 2026-07-17 entry.
 
 - [ ] Re-audit build-log coverage after each future task lands.
 - [ ] Decide serial-vs-concurrent for the remaining Wave B tasks (T05/T05b/T06/T08).
+
+## Session: T05 (`vg-vault`) built under Opus, reviewed, tollgate-approved
+
+**Date:** 2026-07-17
+
+### What Changed
+
+Dispatched T05 (SQLCipher vault) under Opus after the default model hit a usage-credit
+wall. It implemented `VaultStore` (keychain-wrapped DB key, AES-256 at rest, namespace
+isolation, TTL/purge) and honored the T04-mandated `Keyer` ordinal reseed
+(`seed_ordinal` + a `MAX(ordinal) GROUP BY` reseed at open). Verified during review; two
+rounds of Codex cross-model critique found two real bugs, both fixed: an expired-row-reuse
+bug (`intern` could return an unresolvable placeholder) and a `UNIQUE` ordinal guard that
+silently didn't fire for fixed entity types (NULL `entity_custom` + SQLite NULL-is-distinct
+semantics → fixed with `COALESCE`). Tollgate-approved by the human.
+
+### Decisions
+
+Full record in repo `docs/decisions.md`'s 2026-07-17 T05 entry.
+
+### Next Actions
+
+- [ ] T05b/T06/T08 tollgates still to be completed (they did not land with T05).

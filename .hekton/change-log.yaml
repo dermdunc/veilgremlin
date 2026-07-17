@@ -240,3 +240,21 @@ changes:
     links:
       - "docs/decisions.md"
       - "docs/session-log.md"
+
+  - id: CHG-0013
+    date: 2026-07-17
+    title: "Task T05: SQLCipher-backed VaultStore (vg-vault) + Keyer::seed_ordinal reseed"
+    intent: "Implement vg-vault's VaultStore (SQLCipher AES-256 at rest, OS-keychain-wrapped DB key, namespace-isolated resolve, TTL/purge, prepared-statement reuse) and add Keyer::seed_ordinal to vg-core so the vault reseeds per-namespace ordinal counters from persisted rows at open (the hard T04-review requirement). Dispatched under Opus. Two Codex cross-model critique rounds found and fixed two real bugs (expired-row reuse; the NULL-entity_custom ordinal-guard gap)."
+    changed_by: "opus (dispatch) + claude (review) + codex (critique x2)"
+    change_type: build
+    risk_level: medium
+    validation:
+      - "cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check && cargo test: PASS, 40 vg-core + 6 vg-vault unit + 15 vault integration tests, confirmed in the real repo after the tollgate applied the diff"
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    links:
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"

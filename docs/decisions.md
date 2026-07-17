@@ -19,6 +19,7 @@
 | 2026-06-30 | **Build method = agent factory, contract-first** | Squads own one crate each; interfaces frozen end of Wave A to enable safe parallel agent work (see `architecture/agent-factory-plan.md`) |
 | 2026-07-03 | Build driven through Hekton's task-DAG orchestrator (`agentic-control-tower`), not manual per-task dispatch | `.hekton/veilgremlin-dag.toml` is now the machine source of truth for the T01-T11 DAG (transcribed from `architecture/work-breakdown.md`); `.hekton/build-tasks/*.md` are generated engine-gateway-lab task specs (regenerate via `dag gen-specs`, don't hand-edit). `.control-tower/` tracks each task's lifecycle. All build tasks route through `claude-cli`/`codex-cli` (cloud, V1 scope — no local-model build capability exists yet) at `privacy: vendor-allowed` (this repo's own source isn't privacy-sensitive; see `.hekton/project.yaml`'s `privacy_boundary: internal`). See `agentic-control-tower`'s root `decisions.md` ADR-013 for the full orchestrator design. |
 | 2026-07-04 | Repo ownership moved from **coderturtle** (private) to **dermdunc** (public) | VeilGremlin is an enterprise architecture/governance/risk tool, not agentic-engineering tooling — belongs under the professional-identity account per Hekton's new domain-based GitHub routing decision (see `~/hekton/docs/decisions.md`, 2026-07-04). Supersedes the 2026-06-30 "coderturtle, private" decision above. |
+| 2026-07-17 | ADR-011 (T05) `vg-vault` = **SQLCipher via `rusqlite` (vendored OpenSSL), OS-keychain-wrapped DB key, per-install salt in an encrypted `meta` table; `Keyer` ordinal counters reseeded from persisted rows at open** | Encrypted-at-rest reversible mapping store; keychain wrap keeps the key off disk; reseed prevents display-ordinal collision/drift across process restarts. Added an additive `Keyer::seed_ordinal` to `vg-core` (not a frozen-contract change). See the 2026-07-17 T05 entry below. |
 
 Full reasoning and the Mermaid-illustrated design are in [`spec/requirements-and-design-spec.md`](spec/requirements-and-design-spec.md).
 
@@ -899,3 +900,145 @@ dispatch failure modes, review rounds, fixes). It lives directly in this public 
 required, unlike the Workshop Gremlin's Astro/Pages pattern, since VeilGremlin doesn't (yet)
 have or need a standalone site for it. Re-audit this coverage after each future task, not just
 at the end.
+
+## 2026-07-17 — T05 (`vg-vault`): SQLCipher-backed `VaultStore`, keychain-wrapped key, Keyer reseed
+
+### Context
+
+Task T05 implements `vg_core::traits::VaultStore` in `crates/vg-vault` (previously an empty
+stub). The dispatch fixed several choices (SQLCipher via `rusqlite`, OS-keychain key wrap via
+`keyring`, `Secret` for raw values, call into `vg-core`'s `keying.rs` rather than reimplementing
+HMAC, namespace isolation on `resolve`, TTL purge, cached prepared statements) and asked that any
+remaining ambiguity be resolved by best judgment and recorded here rather than by asking (headless
+one-shot, no follow-up channel). As with T04, no Rust toolchain/compiler was reachable in the
+dispatch environment (`cargo` is gated behind interactive approval that a headless run can't
+satisfy), so the code is written against the verified `vg-core` interfaces and left for a
+compile/clippy/test pass at PR-review time.
+
+### Decisions and recorded assumptions
+
+1. **Added a `Keyer::seed_ordinal` method to `vg-core`'s `keying.rs` (the one cross-crate edit).**
+   The dispatch's hard requirement — the vault's `Keyer` must have its per-`(Namespace,
+   EntityType)` ordinal counters reseeded from persisted `mapping` rows at construction — was
+   impossible against T04's `Keyer` as merged: its ordinal state is private with no reseed hook.
+   `Keyer` is an internal T04 helper, **not** part of the frozen `interface-contracts.md` surface
+   (§0–§8), so adding an additive, monotonic, idempotent `seed_ordinal(&self, ns, ty, max_ordinal)`
+   is not a contract change. This is the minimal, correct way to satisfy the requirement without
+   the vault reimplementing ordinal assignment or display formatting (`type_tag_for_display` is
+   private to `keying.rs`).
+
+2. **`intern` computes the lookup key with `placeholder_key` (non-mutating), and only calls
+   `Keyer::key_for` (which mints an ordinal) once a value is confirmed new to the DB.** Calling
+   `key_for` first would advance the ordinal counter for values that already have a persisted
+   ordinal, causing gaps and divergence after a restart. The DB (keyed by the HMAC hex) is the
+   durable source of truth for "already interned?"; the reseeded `Keyer` is used only to assign
+   the next ordinal/display for genuinely new values.
+
+3. **"Cache prepared statements on the struct" is implemented via rusqlite's
+   `Connection::prepare_cached`, not a self-referential `Statement` field.** A `rusqlite::Statement`
+   borrows its `Connection`, so storing both in one struct is self-referential and not idiomatic;
+   `prepare_cached` maintains an LRU of compiled statements on the `Connection` itself, which is
+   exactly the "don't re-prepare per call on the hot lookup path" intent. The `Connection` is behind
+   a `Mutex` (it is `Send` but `!Sync`; `VaultStore` requires `Send + Sync`).
+
+4. **No app-level second cipher on the value column.** SQLCipher encrypts the entire DB file with
+   AES-256 (`interface-contracts.md` §5), so the raw value stored in a column is encrypted at rest
+   by that layer. Adding a separate application-level encryption of the value column would be
+   redundant defense-in-depth for Phase 1 and was not done; the schema stores the value in a column
+   protected by the SQLCipher-encrypted, keychain-wrapped DB.
+
+5. **The keying salt is a per-install random 32 bytes stored in a `meta` table inside the encrypted
+   DB** (generated on first open), not a compiled-in constant — a hardcoded salt would make "salted"
+   a no-op across installs (per `keying.rs`'s own note). It is protected by the same SQLCipher/keychain
+   layer as the values.
+
+6. **`Vault::open_with_key(config, key)` exists alongside `Vault::open(config)`.** `open` fetches the
+   DB key from the OS keychain (generating one on first use); `open_with_key` takes a caller-supplied
+   key and bypasses the keychain. This is the seam the test suite uses (temp-file DB + fixed key) so
+   tests never touch or mutate the real macOS keychain, and it is also the hook for a future
+   alternative key custodian. The "never persisted plaintext" guarantee is a property of the `open`
+   keychain path; with `open_with_key` the caller owns the key's secrecy.
+
+7. **`resolve` reports both a namespace mismatch and an expired mapping as `VaultError::NotFound`**,
+   never distinguishing "exists in another namespace" from "doesn't exist" (the §5 isolation
+   contract, checked by `assert_vault_roundtrip`). Every `resolve` attempt (success or not) appends
+   one row to the append-only `demask_event` table, holding only the opaque `mapping_ref` and
+   namespace — never the value.
+
+8. **`rusqlite`'s `bundled-sqlcipher-vendored-openssl` feature** was chosen over `bundled-sqlcipher`
+   so the build vendors both SQLCipher and OpenSSL from source rather than depending on a system
+   OpenSSL with dev headers (macOS ships LibreSSL without them). This makes the crate build heavier
+   (needs a C toolchain + perl) but self-contained; flagged as a build-environment consideration for
+   the PR-review compile pass.
+
+9. **`EntityType`/`Namespace` are stored in structured, round-trippable columns** (`ns_kind`/`ns_id`,
+   `entity_kind`/`entity_custom`) owned by `vg-vault`'s `codec` module — deliberately *not* the
+   private one-way keying tags from `keying.rs` — so the construction-time reseed can reconstruct the
+   real `(Namespace, EntityType)` to feed `seed_ordinal`. `Custom(name)` stores its raw dictionary
+   name so two classes that format identically for display remain distinct.
+
+### Validation status
+
+Not compiled/tested in the dispatch environment (no reachable toolchain, as in T04). Code and tests
+(`crates/vg-vault/tests/vault.rs`, unit tests in `codec.rs`/`keychain.rs`, and `seed_ordinal` tests in
+`vg-core/keying.rs`) were written against the verified `vg-core` interfaces.
+
+**Verified during PR review (2026-07-17):** the `bundled-sqlcipher-vendored-openssl` build compiled
+clean (SQLCipher + OpenSSL from source, ~30s). Two fixes applied: the same trivial
+`.is_multiple_of` clippy lint as T04, and a missing `Debug` on `Vault` (a test formats
+`Result<Vault, _>` with `{:?}`) — added as a **redacting** manual impl rather than a derive,
+since `Vault` holds the HMAC salt and a derive would print it. Full chain green:
+`cargo build --locked && cargo clippy --workspace --all-targets --locked -- -D warnings &&
+cargo fmt --check && cargo test` — 40 vg-core unit tests (+3 for `seed_ordinal`), 6 vg-vault
+unit + 14 vault integration tests, plus all existing.
+
+### Doubt-driven-development (Codex cross-model, 2026-07-17)
+
+A fresh-context Codex review (given the diff + the frozen `VaultStore` contract + the
+encryption/keying/namespace/TTL requirements) ran out of its turn budget mid-investigation
+without a final synthesised verdict, but surfaced three concrete concerns I then chased down
+in the code myself:
+
+- **Fixed (real correctness bug): `intern` could return an expired-but-unpurged placeholder that
+  `resolve` immediately rejects.** `resolve` filters on expiry (returns `NotFound` for an expired
+  mapping) but `intern`'s `lookup_by_key` did not, so re-interning a value whose TTL had lapsed
+  (before `purge_expired` ran) returned the stale placeholder — one that would then fail to
+  resolve. Since `key_hex` is the `PRIMARY KEY`, minting a divergent new row is impossible, so the
+  fix renews the expired row's TTL in place (re-minting `expires_at` exactly as a fresh intern
+  would) and returns the same stable placeholder. New regression test
+  `re_interning_an_expired_but_unpurged_value_renews_it_and_stays_resolvable`.
+- **Reconciled (accepted design, documented): `resolve` writes a `demask_event` row on every
+  attempt, including a failed namespace probe.** This is deliberate and correct — the schema
+  comment and this task's own decision #7 both state a reversal (success or denial) must be
+  attributable, and the row holds only the opaque `mapping_ref` + namespace, never the value.
+  Forward note for **T07**: when the pipeline also drives the `vg-audit` `AuditSink`
+  (`DemaskDecision`), avoid double-logging the same demask — decide which layer owns it.
+- **Reconciled (round 1): the `UNIQUE (ns, ty, ordinal)` index is a *defense* against a
+  cross-process ordinal race** (a duplicate-ordinal insert fails loudly rather than silently
+  colliding). Cross-process openers are documented out of Phase 1 scope. **This claim was
+  partly WRONG and was corrected in round 2 — see below.**
+
+Namespace isolation on `resolve` was verified present and correct (returns `NotFound` on a
+namespace mismatch, never distinguishing it from "doesn't exist" — `assert_vault_roundtrip`
+passes). Round 1's Codex pass did not deliver a full verdict.
+
+### Doubt-driven-development, round 2 (Codex cross-model, complete verdict, 2026-07-17)
+
+Re-ran a tighter, exploration-forbidden Codex critique (round 1 had exhausted its budget
+reading the wider repo). It delivered one concrete finding, and it invalidated round 1's own
+reconciliation above:
+
+- **Fixed (real bug): the ordinal `UNIQUE` guard did NOT actually fire for fixed entity types.**
+  SQLite treats `NULL` as *distinct* in a `UNIQUE` index, and every fixed entity type (Email,
+  Iban, …) stores `entity_custom = NULL`. So the index `(ns_kind, ns_id, entity_kind,
+  entity_custom, ordinal)` never rejected a duplicate `EMAIL_001` for two different secrets in
+  the same namespace — the exact collision round 1 claimed it "made fail loudly." Only
+  `Custom(name)` rows (non-null `entity_custom`) were ever covered. Fixed by keying the index on
+  `COALESCE(entity_custom, '')`, so all fixed-type rows share one key value and the constraint
+  applies uniformly. New regression test
+  `the_ordinal_unique_guard_fires_for_a_fixed_entity_type_null_entity_custom` (two `Vault`
+  instances race the same ordinal; the second insert is now rejected). This is a good example
+  of why a *complete* cross-model verdict was worth re-running for: round 1's partial pass left
+  a plausible-but-false safety claim standing.
+
+Full chain green after the fix: 40 vg-core + 6 vg-vault unit + 15 vault integration tests.

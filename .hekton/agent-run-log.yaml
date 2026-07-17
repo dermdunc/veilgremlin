@@ -313,3 +313,37 @@ agent_runs:
     next_actions:
       - "Re-run the census as each Wave B/C task lands."
       - "Serial-vs-concurrent decision for the remaining Wave B tasks still open."
+  - id: RUN-0010
+    date: 2026-07-17
+    agent: "claude (interactive session)"
+    role: "Documentation Agent"
+    intent: "Merged PR #6, pulled main up to date. Added docs/build-log/ -- a dated, deliberately-written build-in-public narrative distinct from docs/session-log.md, per the Hekton Workshop Gremlin's convention. Backfilled 7 entries covering the repo's history to date. Wired into AGENTS.md/CLAUDE.md/CODEX.md as a standing rule and linked from README.md and a refreshed docs/project-walkthrough.md (which had gone stale)."
+    autonomy_level: 3
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    files_touched:
+      - "docs/build-log/README.md"
+      - "docs/build-log/2026-06-30-scaffolding-a-privacy-shield.md"
+      - "docs/build-log/2026-07-04-a-real-name-to-say-out-loud.md"
+      - "docs/build-log/2026-07-14-the-workspace-that-almost-built-itself.md"
+      - "docs/build-log/2026-07-15-freezing-the-contract-everyone-else-builds-on.md"
+      - "docs/build-log/2026-07-15-the-detector-that-asked-a-question-instead-of-writing-code.md"
+      - "docs/build-log/2026-07-16-teaching-the-fan-out-to-test-itself.md"
+      - "docs/build-log/2026-07-16-the-fix-that-was-wrong-and-how-we-found-out.md"
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - "CODEX.md"
+      - "README.md"
+      - "docs/project-walkthrough.md"
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"
+    validation:
+      - "Docs-only change; no Rust code touched this session"
+    risks:
+      - "None new. Backfilled entries only summarize what docs/decisions.md and docs/session-log.md already say publicly, per the build-log's own safety rule."
+    next_actions:
+      - "Add a build-log entry as each future task lands, per the new standing rule."
+      - "Revisit whether the build log earns a publishable site later."

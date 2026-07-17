@@ -148,3 +148,34 @@ excluded by the entropy fix. Remaining ~10% of findings left for T10's formal ga
 
 - [ ] Re-run the census as each Wave B/C task lands.
 - [ ] Serial-vs-concurrent decision for the remaining Wave B tasks still open.
+
+## Session: Merged PR #6; added a build log
+
+**Date:** 2026-07-17
+
+### What Changed
+
+Merged PR #6, pulled `main` up to date. Added `docs/build-log/` — a dated,
+deliberately-written build-in-public narrative distinct from `docs/session-log.md`, per
+the Hekton Workshop Gremlin's convention. Backfilled 7 entries covering the repo's
+history to date. Wired into `AGENTS.md`/`CLAUDE.md`/`CODEX.md` as a standing rule, and
+linked from `README.md` and a refreshed `docs/project-walkthrough.md`.
+
+### Decisions
+
+Full record in repo `docs/decisions.md`'s 2026-07-17 entry.
+
+### Assumptions
+
+None beyond the human's explicit choice of lightweight dated docs over a full
+publishable site.
+
+### Risks
+
+None new — backfilled entries only narrate what `docs/decisions.md`/`docs/session-log.md`
+already say publicly.
+
+### Next Actions
+
+- [ ] Add a build-log entry as each future task lands, per the new standing rule.
+- [ ] Revisit whether the build log earns a publishable site later.

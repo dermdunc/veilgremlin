@@ -162,3 +162,14 @@ Repo source-of-truth for the work queue. Tasks T01–T11 are defined in [`archit
 - [ ] Residual ~10% entropy/phone false positives left for T10's formal
       `false_positive_rate` measurement, per the hybrid decision — not a new gap, the
       accepted remainder.
+
+## Session Update: 2026-07-17 — PR #6 merged; build log added
+
+- [x] Merged PR #6; `main` up to date locally.
+- [x] Added `docs/build-log/` (7 backfilled entries + convention doc), wired into
+      `AGENTS.md`/`CLAUDE.md`/`CODEX.md` as a standing rule, linked from `README.md` and
+      a refreshed `docs/project-walkthrough.md`. See `docs/decisions.md`.
+- [ ] Decide serial-vs-concurrent for the remaining Wave B tasks (T04/T05/T05b/T06/T08) —
+      still open.
+- [ ] Add a build-log entry as each future task lands, per the new standing rule.
+- [ ] Revisit whether the build log earns a publishable site later — not needed yet.

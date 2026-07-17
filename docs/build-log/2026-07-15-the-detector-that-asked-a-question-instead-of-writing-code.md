@@ -1,0 +1,15 @@
+# The detector that asked a question instead of writing code
+
+**2026-07-15**
+
+Task T03 was the first Wave B task dispatched: five deterministic detectors (email, phone, IP, IBAN/sort-code, and a Shannon-entropy detector for unstructured secrets), plus a benchmark to prove they stayed inside the latency budget. It was also the first task dispatched through the real fully-unattended pipeline, no human picking up a stalled build partway through like T01, no timeout cutting T02 off mid-flight.
+
+The first attempt didn't write any code. It read a terse one-line task description and, reasonably enough, asked a clarifying question back. That would be fine in an interactive session. It is not fine in headless one-shot mode, which has no channel to answer a question on, so the question became the entire session. The dispatch adapter exited cleanly, the ledger recorded it as in-progress, and the orchestrator's own verify step passed trivially, because there was no new code to fail against. Everything about that run looked successful except that nothing had been built. That's a genuinely new failure mode, distinct from a permission stall or a timeout, and it's now written down as one.
+
+The fix was to stop being terse. The task spec got rewritten with concrete file and trait guidance and an explicit instruction to use judgment rather than ask, and the second dispatch produced real work: five detector modules, around eight hundred lines, plus a criterion benchmark, close to the spec as written.
+
+Two rounds of adversarial review followed, the second from a different model entirely, specifically to catch what the first review shared blind spots with. Between them they found three real bugs. An IPv4-mapped IPv6 address (the `::ffff:` form) was only partially matched, leaving most of a real address sitting in the output unredacted. The entropy detector's tokenizer excluded common password special characters, which meant a password shaped like `aB3!xY7@qR2#nM8$` got shredded into fragments too short to trigger on individually, a whole class of realistic secrets invisible to the one detector whose entire job is catching secrets with no fixed shape. And fixing the IPv6 bug exposed a new one: the IPv4 and IPv6 patterns started overlapping on the fixed input, double-counting the same bytes as two separate findings.
+
+The human approval step turned up one more thing, and not in VeilGremlin's own code. The review tool used to show a diff and ask for a yes or no got stuck, silently, because it resolves where a task's output artifact lives relative to its own repo, which breaks the moment the task's spec actually lives in a different repo, as every ACT-dispatched cross-repo task's does. Nobody had hit that exact path before, because neither of the first two tasks had produced output waiting for this exact review flow. Worked around live so the approval could go through, then written up properly as a bug in the review tool itself rather than quietly patched over.
+
+Full record: [`docs/decisions.md`](../decisions.md#2026-07-15---task-t03-five-deterministic-detectors-plus-a-two-round-doubt-driven-development-pass).

@@ -653,3 +653,36 @@ gate for the residual ~10% and any future drift. The mid-session correction is i
 evidence for why "measure on real content, don't just theorize" (the whole point of the
 census/dogfooding effort) matters — the first, unmeasured version of this exact fix would
 have shipped almost no real improvement.
+
+## 2026-07-17 - Added a build log, distinct from the session log
+
+### Context
+
+Human asked for a build log tracking "everything we're doing in this repo," similar to the
+Hekton Workshop Gremlin's `docs/build-log/YYYY-MM-DD-*.md` convention and, to a degree, the
+Hekton Field Journal. Since VeilGremlin already has a comprehensive internal
+`docs/session-log.md`, the open question was what a build log adds that isn't already
+covered — asked the human directly rather than assume scope: lightweight dated docs only,
+a full publishable Astro-on-Pages site (like `terminal-velocity`/`borrow-native`), or just
+writing about VeilGremlin from the Field Journal repo instead of building anything new here.
+Human chose the lightweight option, explicitly to start.
+
+### Decision
+
+Added `docs/build-log/` — dated, deliberately written entries (`YYYY-MM-DD-<slug>.md`),
+one per real event (a decision, a failure, a fix, a surprising result), not a mechanical
+summary of `docs/session-log.md` and not one per session. Backfilled 7 entries covering the
+repo's history to date: the initial scaffold, the coderturtle-to-dermdunc ownership move,
+T01, T02, T03, the fan-out/latency-gate/census round, and the entropy/phone false-positive
+fix (including its own mid-session self-correction, which became the best story of the
+lot). Wired into the standing documentation contract: `AGENTS.md`, `CLAUDE.md`, and
+`CODEX.md` all gained a rule to add an entry for future sessions with a real event, and
+`AGENTS.md`'s traceability table now lists `docs/build-log/` alongside the existing
+artefacts. Linked from `README.md`'s documentation table and `docs/project-walkthrough.md`
+(which also got its own overdue refresh — it had gone stale claiming T01's PR was still
+open and zero business logic existed, both no longer true).
+
+No Astro site or GitHub Pages deploy yet — this repo is already public, so the files are
+readable directly on GitHub without one. A site can be built later if the practice earns it
+(see `docs/next-actions.md`), following the Workshop Gremlin's Build-log/Pages publisher
+agent pattern rather than inventing a new one.

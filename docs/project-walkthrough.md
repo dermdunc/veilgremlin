@@ -21,12 +21,38 @@ AI coding agents pull in far more than a chat prompt: files, diffs, terminal out
 - Authored the full **requirements & design specification** (`docs/spec/`), covering Phase 0 (discovery) and Phase 1 (laptop MVP): threat model, taxonomy, hot/warm/cold path design, token vault, policy-as-code, supply-chain model, six architecture diagrams, and Go/No-Go criteria.
 - Authored the **agent factory build plan** (`docs/architecture/`): how teams of agents build this — squad-per-crate ownership, a contract-first method, the four build waves, the task DAG (T01–T11), and the frozen interface contracts that let squads work in parallel without colliding.
 - Brought the source **deep research report** into the repo (`docs/research/`).
-- **2026-07-14 — Task T01 built: the real Cargo workspace.** Nine crates
+- **2026-07-14 — Task T01 built and merged: the real Cargo workspace.** Nine crates
   (`vg-core`, `vg-detectors`, `vg-parsers`, `vg-vault`, `vg-policy`, `vg-audit`, `vg-cli`,
   `vg-adapters-claude`, `vg-bench`) matching the squad-per-crate plan, `.github/workflows/ci.yml`
   (fmt, clippy, cargo-deny, cargo-audit, build, bench compile), `deny.toml`, and a release
-  skeleton. Crates are empty skeletons — the shared types and trait definitions land in Task T02.
-  Full record: `docs/decisions.md` and `docs/walkthroughs/2026-07-14-t01-workspace-scaffold.md`.
+  skeleton. Crates were empty skeletons at this point — the shared types and trait definitions
+  landed in Task T02.
+- **2026-07-15 — Task T02 built and merged: `vg-core`'s frozen contract.** Shared types, trait
+  seams (`Detector`, `Parser`, `VaultStore`, `PolicyEngine`, `AuditSink`), and conformance test
+  helpers every Wave B squad builds against. Review found `interface-contracts.md` had never
+  actually been reconciled against the real code (11 missing types) and a real namespace-isolation
+  bug in the vault conformance template — both fixed before Wave B started.
+- **2026-07-15/16 — Task T03 built and merged: the five deterministic detectors** (email, phone,
+  IP, IBAN/sort-code, entropy) plus a criterion benchmark. First task to complete a genuinely
+  unattended dispatch — after an earlier attempt returned a clarifying question instead of code, a
+  new, previously-unseen failure mode for headless one-shot dispatch. Two rounds of cross-model
+  review found and fixed 3 real bugs (a partially-matched IPv4-mapped IPv6 address, a password
+  shape the entropy detector's tokenizer split apart, and a resulting IP self-overlap).
+- **2026-07-16 — Real CI latency gate, cross-crate testing requirements, and a real detector
+  census.** Added a plain-`#[test]` latency-regression gate ahead of Task T10's formal harness;
+  added integration-testing requirements to T04/T08/T09's acceptance criteria; ran a Codex
+  planning pass on dogfooding VeilGremlin as it's built; built and ran a read-only "detector
+  census" against 197 real Hekton files, which found the entropy/phone detectors dominated by
+  false positives.
+- **2026-07-16 — Fixed the entropy/phone false-positive finding, hybrid + measured.** A Codex
+  planning pass recommended fixing the two dominant detector-level false positives now while
+  keeping Task T10 as the formal precision gate. The first attempt at the entropy fix (targeting
+  Hekton's own run-ID shapes) barely helped when actually measured; the real dominant noise was
+  file paths and code identifiers, corrected accordingly. Measured, isolated before/after: entropy
+  false positives down 90%, phone down 91%, latency unaffected.
+
+See **`docs/build-log/`** for the same history told as a readable, dated narrative rather than a
+technical changelog — start at [`docs/build-log/README.md`](build-log/README.md).
 
 ## How the pieces fit together
 
@@ -34,8 +60,8 @@ A small hardened **Rust core** does the work: parse → detect → vault → pol
 
 ## What is deliberately not automated yet
 
-- The actual Rust implementation (Phase 1 build, tasks T02–T11 — T01 is the workspace/CI
-  scaffold, now done).
+- The actual Rust implementation for Wave B onward (T04/T05/T05b/T06/T08 not yet dispatched;
+  T01/T02/T03 done and merged).
 - Warm-path local NER (GLiNER) — designed but off by default.
 - LiteLLM gateway, MCP server mode, CI/CD mode, cloud-agent packaging — all later phases.
 - Synthetic-data generation and quasi-identifier leakage scoring — Phase 4.
@@ -47,8 +73,9 @@ VeilGremlin is itself a demonstration of the Hekton "agent factory" model: a tea
 ## Current confidence level
 
 Design: high (grounded in the research report and an explicit Go/No-Go bar). Implementation:
-started (T01 workspace/CI built 2026-07-14, PR open — not yet merged; zero business logic yet —
-T02 onward). Update as evidence grows.
+Wave A (T01/T02) and the T03 detector pilot are built, reviewed, and merged; real business logic
+exists and is measured against real content (see the 2026-07-16 census). Wave B's remaining five
+tasks (T04/T05/T05b/T06/T08) are not yet dispatched. Update as evidence grows.
 
 ## Open questions
 
@@ -58,6 +85,6 @@ T02 onward). Update as evidence grows.
 
 ## Next recommended session
 
-Review and merge T01's PR (github.com/dermdunc/veilgremlin/pull/2). Then dispatch/build T02
-(Squad 0 freezes the interface contracts in `vg-core`). Once T01 and T02 both merge,
-batch-dispatch the five Wave B squads.
+Decide serial-vs-concurrent dispatch for the remaining Wave B tasks (T04/T05/T05b/T06/T08),
+now that T03's pilot has proven the rework loop and the ledger fix for real. Re-run the
+detector census as each lands, per the Codex dogfooding plan's ladder.

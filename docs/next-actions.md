@@ -75,7 +75,12 @@ Repo source-of-truth for the work queue. Tasks T01–T11 are defined in [`archit
 
 ## This Week (Wave B — dispatch in parallel once T01+T02 merge)
 
-- [ ] **T03/T04** detectors + placeholder/HMAC keying — *Squad 1 (+3)*
+- [x] **T03** detectors — done 2026-07-15 (see session log). **T04** placeholder/HMAC
+      keying — built 2026-07-17 (headless dispatch, unable to reach a compiler in-session)
+      and verified during PR review: `cargo build --locked && cargo clippy --all-targets
+      -- -D warnings && cargo fmt --check && cargo test -p vg-core` all green after one
+      trivial clippy fix and an fmt pass — see `docs/decisions.md`'s 2026-07-17 entry.
+      — *Squad 1 (+3)*
 - [ ] **T08** parsers (logs, diffs, JSON/YAML, `.env`, tree-sitter) — *Squad 2*
 - [ ] **T05** SQLCipher vault + keychain wrap + TTL — *Squad 3*
 - [ ] **T05b** audit sink (append-only, redaction-safe) — *Squad 5*
@@ -173,3 +178,30 @@ Repo source-of-truth for the work queue. Tasks T01–T11 are defined in [`archit
       still open.
 - [ ] Add a build-log entry as each future task lands, per the new standing rule.
 - [ ] Revisit whether the build log earns a publishable site later — not needed yet.
+
+## Session Update: 2026-07-17 — T04 built (headless dispatch, unable to reach a compiler) and verified during PR review
+
+- [x] Built `crates/vg-core/src/keying.rs` (typed-placeholder + salted HMAC keying,
+      per-namespace/per-type ordinals, Luhn/mod-97 validators, session cache) plus
+      `crates/vg-core/tests/keying_integration.rs` (real `Finding`s from
+      `vg-detectors::all_detectors()`). See `docs/decisions.md` for five recorded
+      judgment calls made without a follow-up channel to ask.
+- [x] Verified during PR review: `cargo build --locked && cargo clippy --all-targets --
+      -D warnings && cargo fmt --check && cargo test -p vg-core` all green after one
+      trivial clippy fix and an fmt pass — every hand-traced Luhn/mod-97 vector confirmed
+      correct.
+- [x] Codex cross-model doubt-pass on the T04 diff: found and fixed 3 real bugs
+      (`Custom`-type HMAC collision, compact-vs-spaced IBAN/sort-code/phone keying
+      differently, `PlaceholderKey`'s `Debug` leaking the real HMAC hex) plus 1
+      documentation gap (`iban_mod97_is_valid` under-scoped in its own doc comment).
+      5 new regression tests. See `docs/decisions.md`'s Doubt-driven-development
+      subsection.
+- [ ] **T05 (`vg-vault`) hard requirement, not optional:** `VaultStore::intern` must
+      reseed `Keyer`'s per-namespace ordinal counters from the vault's own persisted
+      records at construction time, or ordinals can collide/drift across process
+      restarts. Found during the T04 doubt-pass; T05 doesn't exist yet so this couldn't
+      be fixed in T04 itself — flagging loudly here so it isn't silently skipped.
+- [ ] T05 (`vg-vault`) should call `Keyer`/`placeholder_key` from `VaultStore::intern`
+      rather than reimplementing keying.
+- [ ] Decide serial-vs-concurrent for the remaining Wave B tasks (T05/T05b/T06/T08) —
+      still open.

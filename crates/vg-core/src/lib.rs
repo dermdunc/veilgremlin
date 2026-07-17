@@ -20,6 +20,7 @@ mod api;
 mod audit;
 mod error;
 mod ids;
+mod keying;
 mod traits;
 mod types;
 
@@ -32,6 +33,9 @@ pub use api::{
 pub use audit::AuditEvent;
 pub use error::{AuditError, MaskError, PolicyError, RehydrateDenied, VaultError};
 pub use ids::{ActorId, AuditId, DetectorId, OrgId, RepoId, SessionId};
+pub use keying::{
+    canonicalize, iban_mod97_is_valid, luhn_is_valid, placeholder_key, Keyed, Keyer, PlaceholderKey,
+};
 pub use traits::{
     ArtefactHint, ArtefactKind, AuditSink, Detector, Enricher, ParseResult, Parser, Placeholder,
     PolicyEngine, PolicyLayers, Secret, VaultStore,

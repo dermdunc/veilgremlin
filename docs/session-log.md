@@ -553,3 +553,81 @@ Full record in `docs/decisions.md`'s 2026-07-17 entry.
 - Docs-only change this session; no Rust code touched. Full workspace verify chain
   (`cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt
   --check && cargo test`) last confirmed green in the prior session's entry above.
+
+## Session: T04 — typed-placeholder + HMAC keying (headless dispatch, 2026-07-17)
+
+### What happened
+
+Headless one-shot dispatch of Task T04. Implemented `crates/vg-core/src/keying.rs`: the
+`VaultStore`-authoritative formula ("stable placeholder via salted HMAC over
+`(canonical(value), ty, ns)`") plus the four supporting pieces the task spec named —
+type-specific case/whitespace canonicalisation, per-`(Namespace, EntityType)` sequential
+ordinal assignment for the `EMAIL_001`/`ACCOUNT_ID_014`-style `display` string, Luhn and
+ISO 7064 mod-97-10 checksum validators, and a `Mutex`-backed session-scoped cache
+(`Keyer`) so repeated keying of the same value doesn't recompute the HMAC. Added an
+integration test (`crates/vg-core/tests/keying_integration.rs`) feeding real `Finding`s
+from `vg-detectors::all_detectors()` (Task T03) through the new keying logic, per the
+2026-07-16 cross-crate integration requirement added to this task's acceptance criteria.
+
+### Changes made
+
+- `crates/vg-core/src/keying.rs` (new) — `canonicalize`, `placeholder_key`,
+  `PlaceholderKey`, `Keyer`/`Keyed`, `luhn_is_valid`, `iban_mod97_is_valid`, plus 25 unit
+  tests.
+- `crates/vg-core/src/lib.rs` — wired in `mod keying;` and its public re-exports.
+- `crates/vg-core/Cargo.toml` — added `hmac`/`sha2` dependencies; added a dev-only
+  `vg-detectors` dependency for the integration test.
+- `crates/vg-core/tests/keying_integration.rs` (new) — 5 tests against real T03 detector
+  output.
+- `docs/decisions.md` — new 2026-07-17 T04 entry recording five judgment calls (see
+  below) made without a follow-up channel to ask.
+
+### Decisions
+
+Full record in `docs/decisions.md`'s 2026-07-17 T04 entry: type-specific case-folding
+(not blanket); caller-supplied HMAC salt (`vg-core` doesn't own persistent key storage);
+an explicit separator byte in the HMAC message to prevent field-concatenation collisions;
+ordinals scoped per `(Namespace, EntityType)`; and — the one worth flagging here
+specifically — Luhn/mod-97 are exposed as pure validators but deliberately **not** wired
+into `display` construction to synthesize a fake-but-checksum-valid card/IBAN number,
+since that would conflict with ADR-005's frozen "typed placeholders, not synthetic
+values" decision (2026-06-30).
+
+### Assumptions
+
+- Ordinal sequences are independent per namespace (each `Namespace` gets its own
+  `EMAIL_001, EMAIL_002, ...`), not a single counter shared globally per `EntityType`
+  across all namespaces — read from the acceptance criterion's "same value -> same
+  placeholder **within namespace**" framing.
+- `EntityType::Custom(name)`'s display tag upper-snake-cases the dictionary name
+  (`internal-project-codename` -> `CUSTOM_INTERNAL_PROJECT_CODENAME`) rather than using
+  the raw string, for consistency with the fixed types' `TYPE_TAG_NNN` shape.
+
+### Risks
+
+None new. This module doesn't touch the vault, policy, or audit paths yet — those land
+with `vg-vault` (T05), which will be the first real caller of `Keyer`/`placeholder_key`.
+
+### Next Actions
+
+- T05 (`vg-vault`) should call into this module from `VaultStore::intern` rather than
+  reimplementing keying — that's the whole point of building it standalone first.
+- Remaining Wave B tasks (T05/T05b/T06/T08) still open.
+
+### Validation status
+
+**Not run in the dispatch session** — a fully headless, sandboxed dispatch: every
+`cargo`/`rustc` invocation attempted returned an immediate "this command requires
+approval" with no reachable prompt (plain shell — `find`/`grep`/`git status` — worked
+fine, so this reads as a policy gating toolchain execution specifically, not a general
+Bash block). The code was written and hand-traced carefully against the `hmac`/`sha2`
+crate APIs and existing crate conventions, including manually verifying the Luhn and
+mod-97 test vectors by hand digit-by-digit.
+
+**Verified during PR review:** `cargo build --locked` compiled clean (only `Cargo.lock`
+needed regenerating for the two new dependencies). `cargo clippy --workspace
+--all-targets --locked -- -D warnings` found one trivial modern-lint finding
+(`.is_multiple_of(10)` over `% 10 == 0`), fixed. `cargo fmt --check` found routine
+reformatting (file had never been run through `cargo fmt`), applied. Full suite green
+after: 32 `keying` unit tests + 5 cross-crate integration tests + the existing 7 `vg-core`
+conformance tests, all passing — every hand-traced Luhn/mod-97 vector confirmed correct.

@@ -513,3 +513,43 @@ theory" mattered here concretely, in `docs/decisions.md`'s 2026-07-16 entry.
   && cargo test`: PASS, 46 tests green in `vg-detectors` (5 new: 2 phone date-exclusion,
   3 entropy structured-identifier tests, built from the real false-positive examples
   found).
+
+## Session: Merged PR #6; added a build log
+
+### What happened
+
+Merged PR #6 (fan-out review, latency gate, DAG acceptance criteria, Codex dogfooding
+plan, real census, and the entropy/phone false-positive fix), pulled `main` up to date.
+
+Human asked for a build log tracking work in this repo, similar to the Hekton Workshop
+Gremlin's `docs/build-log/` convention and, to a degree, the Hekton Field Journal. Asked
+what scope was wanted rather than assume it; human chose lightweight dated docs only, no
+publishing site yet.
+
+### Changes made
+
+Added `docs/build-log/README.md` (the convention: one entry per real event, written for
+a reader without context, not a mechanical summary of this file) plus 7 backfilled
+entries covering the repo's history from the initial scaffold through the entropy/phone
+false-positive fix. Wired the convention into `AGENTS.md`/`CLAUDE.md`/`CODEX.md` as a
+standing rule for future sessions, and linked it from `README.md` and
+`docs/project-walkthrough.md` — which also got a real content refresh, since it had
+gone stale claiming T01's PR was open and no business logic existed.
+
+### Decisions
+
+Full record in `docs/decisions.md`'s 2026-07-17 entry.
+
+### Next Actions
+
+- Decide serial-vs-concurrent for the remaining Wave B tasks (T04/T05/T05b/T06/T08) —
+  still open.
+- Add a build-log entry as each future task lands, per the new standing rule.
+- Revisit whether the build log earns a publishable site later (Astro-on-Pages, per the
+  Workshop Gremlin's pattern) — not needed yet since this repo is already public.
+
+### Validation status
+
+- Docs-only change this session; no Rust code touched. Full workspace verify chain
+  (`cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt
+  --check && cargo test`) last confirmed green in the prior session's entry above.

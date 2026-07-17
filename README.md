@@ -33,13 +33,15 @@ vg audit last
 | [Interface Contracts](docs/architecture/interface-contracts.md) | Frozen crate seams for parallel build |
 | [Architecture index](docs/architecture.md) · [Decisions](docs/decisions.md) · [Risks](docs/risks.md) · [Next Actions](docs/next-actions.md) | — |
 | [Deep Research Report](docs/research/deep-research-report.md) | Source analysis |
+| [Build Log](docs/build-log/README.md) | The same history, told as a readable, dated narrative |
 
 ## Status
 
 - **Done:** Phase 0/1 design, agent-factory build plan, repo scaffold (Hekton factory-output).
-- **T01 (Cargo workspace + CI + supply-chain skeleton):** built 2026-07-14, PR open
-  (github.com/dermdunc/veilgremlin/pull/2), not yet merged.
-- **Next:** merge T01, then freeze interface contracts (T02). Once T01 + T02 both merge, batch-dispatch Wave B squads.
+- **T01, T02, T03 built and merged:** the Cargo workspace + CI, `vg-core`'s frozen shared
+  types/traits, and five deterministic detectors (email/phone/IP/IBAN/entropy) with a
+  CI-enforced latency gate. See [`docs/build-log/`](docs/build-log/README.md) for the story.
+- **Next:** dispatch the remaining Wave B tasks (T04/T05/T05b/T06/T08).
 
 ## Project conventions
 

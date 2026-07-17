@@ -185,3 +185,22 @@ changes:
       - "docs/decisions.md"
       - "docs/next-actions.md"
       - "docs/session-log.md"
+
+  - id: CHG-0010
+    date: 2026-07-17
+    title: "Added docs/build-log/ as a standing documentation artefact"
+    intent: "Add a dated, deliberately-written build-in-public narrative (docs/build-log/YYYY-MM-DD-*.md), distinct from the technical docs/session-log.md, per the Hekton Workshop Gremlin's convention. Backfilled 7 entries covering the repo's history. Wired into AGENTS.md/CLAUDE.md/CODEX.md as a standing rule for future sessions and AGENTS.md's traceability table; linked from README.md and a refreshed docs/project-walkthrough.md."
+    changed_by: "claude (interactive session)"
+    change_type: docs
+    risk_level: low
+    validation:
+      - "Docs-only change; no Rust code touched"
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    links:
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"
+      - "docs/build-log/README.md"

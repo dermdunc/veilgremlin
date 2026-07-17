@@ -184,11 +184,15 @@ context = ["docs/architecture/interface-contracts.md"]
 [[task]]
 id = "T05"
 wave = "B"
-depends_on = ["T01", "T02"]
+depends_on = ["T01", "T02", "T04"]
 task_type = "code-implement"
 engine = "claude-cli"
+# 2026-07-17: added T04 as a hard dependency (was T01/T02 only) after a Codex
+# cross-model doubt-pass on T04 found a real cross-task interface gap this task
+# must satisfy -- see the acceptance addendum below and docs/decisions.md's T04
+# entry for the full finding.
 description = "SQLCipher vault: schema (mapping, demask_event), OS-keychain key wrap (macOS first), zeroize, TTL/purge, prepared-statement reuse."
-acceptance = "encrypted at rest; key never plaintext; lookup bench within budget; TTL purge works."
+acceptance = "encrypted at rest; key never plaintext; lookup bench within budget; TTL purge works. ADDED 2026-07-17: VaultStore::intern must call into crates/vg-core/src/keying.rs's Keyer/placeholder_key (Task T04) rather than reimplementing keying, AND must reseed each namespace's ordinal counters from the vault's own persisted records at construction time -- a fresh in-memory Keyer after a process restart must not hand out a display ordinal (e.g. EMAIL_001) that collides with or diverges from what the persisted vault already recorded for a different value. This was found as a real gap during T04's own review, not designed for at the time -- do not skip it."
 context = ["docs/architecture/interface-contracts.md"]
 
 [[task]]

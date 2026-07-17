@@ -48,3 +48,4 @@ That can grow into a published site later if it earns one — see
 - [2026-07-16 — The fix that was wrong, and how we found out](2026-07-16-the-fix-that-was-wrong-and-how-we-found-out.md)
 - [2026-07-17 — A keying module built without a compiler in the room](2026-07-17-a-keying-module-built-without-a-compiler-in-the-room.md)
 - [2026-07-17 — Three bugs a compiler would never have caught](2026-07-17-three-bugs-a-compiler-would-never-have-caught.md)
+- [2026-07-17 — The vault that had to remember its counting](2026-07-17-the-vault-that-had-to-remember-its-counting.md)

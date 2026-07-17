@@ -406,3 +406,36 @@ agent_runs:
     next_actions:
       - "Re-audit build-log coverage after each future task lands, not just retroactively."
       - "Decide serial-vs-concurrent for the remaining Wave B tasks (T05/T05b/T06/T08)."
+  - id: RUN-0013
+    date: 2026-07-17
+    agent: "opus (headless dispatch) + claude (review) + codex (cross-model critique x2)"
+    role: "Build Agent"
+    intent: "T05 (vg-vault): SQLCipher-backed VaultStore under Opus (dispatched after the default claude-cli model hit a usage-credit wall; Opus cleared it). Keychain-wrapped DB key, AES-256 at rest, namespace isolation, TTL/purge, and the T04-mandated Keyer ordinal reseed (added Keyer::seed_ordinal to vg-core + a MAX(ordinal) GROUP BY reseed at vault open). Verified during review; two Codex cross-model critique rounds found two real bugs, both fixed."
+    autonomy_level: 3
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    files_touched:
+      - "crates/vg-vault/src/lib.rs"
+      - "crates/vg-vault/src/codec.rs"
+      - "crates/vg-vault/src/error.rs"
+      - "crates/vg-vault/src/keychain.rs"
+      - "crates/vg-vault/src/random.rs"
+      - "crates/vg-vault/src/schema.rs"
+      - "crates/vg-vault/tests/vault.rs"
+      - "crates/vg-vault/Cargo.toml"
+      - "crates/vg-core/src/keying.rs"
+      - "Cargo.lock"
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"
+      - "docs/build-log/2026-07-17-the-vault-that-had-to-remember-its-counting.md"
+      - "mind-palace/20-projects/factory-output/veilgremlin/session-log.md"
+    validation:
+      - "cargo build --locked && cargo clippy --workspace --all-targets --locked -- -D warnings && cargo fmt --check && cargo test: PASS in both the worktree and the real repo after the tollgate applied the diff -- 40 vg-core + 6 vg-vault unit + 15 vault integration tests"
+      - "Opus honored the T04 reseed mandate directly (verified: intern uses placeholder_key then Keyer::key_for with a debug_assert they agree; open reseeds ordinals from persisted rows)"
+    risks:
+      - "Two real bugs found+fixed via Codex critique: (1) intern could return an expired-but-unpurged placeholder resolve rejects -- fixed by renewing in place; (2) the UNIQUE ordinal guard did not fire for fixed entity types (NULL entity_custom + SQLite NULL-is-distinct) -- fixed with COALESCE. Both regression-tested."
+    next_actions:
+      - "T05b/T06/T08 tollgates still to be completed -- they did not land with T05 (ledgers still in-progress)."

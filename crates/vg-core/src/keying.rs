@@ -310,6 +310,31 @@ impl Keyer {
         state.cache.insert(cache_key, keyed.clone());
         keyed
     }
+
+    /// Reseeds the per-`(Namespace, EntityType)` ordinal counter so the next ordinal
+    /// [`key_for`](Self::key_for) hands out for `(ns, ty)` is strictly greater than
+    /// `max_ordinal`.
+    ///
+    /// A **persistent** `VaultStore` (Task T05, `vg-vault`) calls this at construction for
+    /// each `(namespace, entity type)` group already present in its durable `mapping` table
+    /// (`SELECT ... MAX(ordinal) ... GROUP BY ns, ty`), so a fresh in-memory `Keyer` after a
+    /// process restart continues the ordinal sequence the vault already recorded instead of
+    /// restarting at `001` and handing out a second `EMAIL_001` for a *different* address
+    /// than the one the vault already mapped there. This is the reseed the T04 review flagged
+    /// as a hard requirement for T05 — without it, a display ordinal (`EMAIL_001`) minted in
+    /// one process can silently collide with, or diverge from, a persisted one after a
+    /// restart.
+    ///
+    /// Idempotent and monotonic: the counter only ever moves forward, so seeding with a value
+    /// at or below the current counter is a no-op and replaying the same seed is safe. Does
+    /// **not** touch the value cache — it only advances the ordinal high-water mark; an
+    /// already-persisted value must still be resolved against the vault's own rows (which
+    /// short-circuit before `key_for` is ever called for it), not re-minted here.
+    pub fn seed_ordinal(&self, ns: &Namespace, ty: &EntityType, max_ordinal: u64) {
+        let mut state = self.state.lock().expect("Keyer mutex poisoned");
+        let counter = state.ordinals.entry((ns.clone(), ty.clone())).or_insert(0);
+        *counter = (*counter).max(max_ordinal);
+    }
 }
 
 /// Luhn (mod-10) checksum, for card-number-shaped digit strings. Ignores interior whitespace
@@ -602,6 +627,46 @@ mod tests {
         let debug_output = format!("{key:?}");
         assert!(!debug_output.contains(&key.to_hex()));
         assert!(debug_output.contains("redacted"));
+    }
+
+    #[test]
+    fn seed_ordinal_continues_the_sequence_after_a_simulated_restart() {
+        // Models vg-vault reseeding a fresh Keyer from persisted rows: the DB already holds
+        // EMAIL_001 and EMAIL_002, so the next newly-interned email must be EMAIL_003, not a
+        // second EMAIL_001.
+        let keyer = Keyer::new(b"salt".to_vec());
+        let n = ns("acme/widgets");
+        keyer.seed_ordinal(&n, &EntityType::Email, 2);
+        let next = keyer.key_for("carol@example.com", EntityType::Email, &n);
+        assert_eq!(next.ordinal, 3);
+        assert_eq!(next.display, "EMAIL_003");
+    }
+
+    #[test]
+    fn seed_ordinal_is_monotonic_and_idempotent() {
+        let keyer = Keyer::new(b"salt".to_vec());
+        let n = ns("acme/widgets");
+        keyer.seed_ordinal(&n, &EntityType::Email, 5);
+        keyer.seed_ordinal(&n, &EntityType::Email, 2); // lower -> no-op
+        keyer.seed_ordinal(&n, &EntityType::Email, 5); // replay -> no-op
+        let next = keyer.key_for("carol@example.com", EntityType::Email, &n);
+        assert_eq!(
+            next.ordinal, 6,
+            "counter must not regress below its high-water mark"
+        );
+    }
+
+    #[test]
+    fn seed_ordinal_is_scoped_per_namespace_and_type() {
+        let keyer = Keyer::new(b"salt".to_vec());
+        let n = ns("acme/widgets");
+        keyer.seed_ordinal(&n, &EntityType::Email, 9);
+        // A different type in the same namespace is unaffected.
+        let account = keyer.key_for("acct-1", EntityType::AccountId, &n);
+        assert_eq!(account.display, "ACCOUNT_ID_001");
+        // A different namespace, same type, is unaffected.
+        let other = keyer.key_for("dave@example.com", EntityType::Email, &ns("other"));
+        assert_eq!(other.display, "EMAIL_001");
     }
 
     #[test]

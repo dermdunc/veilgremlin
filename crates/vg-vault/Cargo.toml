@@ -11,3 +11,16 @@ workspace = true
 
 [dependencies]
 vg-core = { workspace = true }
+# SQLCipher-backed encrypted storage (AES-256 at rest, interface-contracts.md §5). The
+# `-vendored-openssl` variant builds both SQLCipher and OpenSSL from source so the crate
+# doesn't depend on a system OpenSSL being present with dev headers (macOS ships LibreSSL
+# without them) — see docs/decisions.md's T05 entry.
+rusqlite = { version = "0.31", features = ["bundled-sqlcipher-vendored-openssl"] }
+# OS keychain wrap for the DB encryption key (macOS Keychain via Security framework),
+# never persisting the key in plaintext on disk.
+keyring = "2"
+uuid = { version = "1", features = ["v4"] }
+getrandom = "0.2"
+
+[dev-dependencies]
+tempfile = "3"

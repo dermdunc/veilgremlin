@@ -179,3 +179,54 @@ already say publicly.
 
 - [ ] Add a build-log entry as each future task lands, per the new standing rule.
 - [ ] Revisit whether the build log earns a publishable site later.
+
+## Session: T04 — typed-placeholder + HMAC keying, tollgate-approved
+
+**Date:** 2026-07-17
+
+### What Changed
+
+Dispatched T04 (`crates/vg-core/src/keying.rs` + `keying_integration.rs`). Headless
+sandbox blocked all `cargo`/`rustc` execution, so the code was hand-traced carefully but
+never compiled by the dispatching agent. Verified during review: compiled clean, one
+trivial clippy fix, one fmt pass. A Codex cross-model doubt-pass then found and fixed 3
+real bugs (`EntityType::Custom` HMAC collision, compact-vs-spaced IBAN/sort-code/phone
+keying differently, `PlaceholderKey`'s `Debug` leaking the real HMAC hex) plus a
+documentation gap. Also folded in T04's task-spec expansion and a new T05-on-T04
+dependency (both originally on a separate branch, PR #8, now superseded and closed).
+Tollgate-approved by the human via `gateway-review.sh`, which hit the same RISK-0017
+output-path bug as T03 (worked around the same way, not fixed at the root).
+
+### Decisions
+
+Full record in repo `docs/decisions.md`'s 2026-07-17 T04 entry, including the
+doubt-driven-development reconciliation.
+
+### Assumptions
+
+None beyond the judgment calls the dispatch instructions explicitly authorised (recorded
+in `docs/decisions.md`, e.g. per-namespace ordinal scoping, Luhn/mod-97 exposed as
+validators only, not wired into placeholder display).
+
+### Risks
+
+A real cross-task interface gap found during review: `Keyer`'s ordinal counters must be
+reseeded from T05's persisted vault state at construction time, or ordinals can
+collide/drift across process restarts. `vg-vault` (T05) doesn't exist yet, so this
+couldn't be fixed in T04 itself — recorded as a hard requirement in T05's own acceptance
+criteria so it can't be silently skipped.
+
+### Next Actions
+
+- [ ] Human: review/merge the T04 PR.
+- [ ] T05 (`vg-vault`) must call into `Keyer`/`placeholder_key` and reseed ordinals from
+      persisted state — see the risk above.
+- [ ] Decide serial-vs-concurrent for the remaining Wave B tasks (T05/T05b/T06/T08).
+
+### Validation status
+
+- `cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check
+  && cargo test`: PASS, 37 `vg-core` unit tests (31 keying-specific), 5 cross-crate
+  integration tests, 7 conformance tests, 46 detector tests, 1 latency-gate test, all
+  green — confirmed in both the worktree and the real repo after the tollgate applied
+  the diff.

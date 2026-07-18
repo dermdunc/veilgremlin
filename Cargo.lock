@@ -1721,6 +1721,10 @@ dependencies = [
 name = "vg-audit"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+ "uuid",
  "vg-core",
 ]
 

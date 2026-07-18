@@ -276,3 +276,32 @@ Full record in repo `docs/decisions.md`'s 2026-07-17 T05 entry.
 ### Next Actions
 
 - [ ] T05b/T06/T08 tollgates still to be completed (they did not land with T05).
+
+## Session: T05b audit sink built (second no-compiler headless dispatch)
+
+**Date:** 2026-07-17
+
+### What Changed
+
+Implemented the T05b audit sink in `crates/vg-audit/`: an append-only JSON Lines
+`AuditSink` (`JsonlAuditSink`, fsynced per write, never truncated), a versioned on-disk
+schema mirroring the frozen `vg-core` contract types, and the acceptance property test
+that no raw value ever reaches the persisted bytes (verbatim or escaped). The dispatch
+had no reachable compiler — same factory gap as T04, now a pattern — which drove the
+storage and dependency choices: everything was selected so the required `Cargo.lock`
+change stayed a hand-verifiable edit between already-locked packages.
+
+### Decisions
+
+Full record in repo `docs/decisions.md`'s 2026-07-17 T05b entry.
+
+### Next Actions
+
+- [ ] Reviewer: run the full verify chain on the T05b branch — nothing compiled
+      in-session.
+- [ ] Decide serial-vs-concurrent for the remaining Wave B tasks (T05/T06/T08).
+
+### Validation status
+
+- Not compiled or tested in-session (toolchain permission-blocked); self-review caught
+  three would-be compile errors before handoff.

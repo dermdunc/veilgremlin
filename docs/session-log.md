@@ -790,3 +790,63 @@ rejects — now renewed in place) plus two reconciled design points (`resolve` a
 demasks by design; the `UNIQUE` ordinal index defends a cross-process race). 40 vg-core + 6
 vg-vault unit + 14 vault integration tests green. Full record in `docs/decisions.md`.
 Mind-palace updated: no (proposed — sync at PR merge, as with prior tasks).
+
+## 2026-07-17 - T05b: audit sink implemented in vg-audit (headless dispatch, no compiler reachable)
+
+Implemented `vg_core::traits::AuditSink` in the previously empty `vg-audit` stub crate,
+per the T05b task spec: append-only JSON Lines storage (`JsonlAuditSink`, one fsynced
+record per line, file never truncated), a versioned on-disk schema (`RecordV1`/`EventV1`
+mirrors with explicit fallible conversions from the frozen `vg-core` types, every record
+carrying `schema_version`), and the full redaction-safety test battery — conformance
+roundtrips for all six `AuditEvent` variants, durability across reopen, torn-write
+recovery, unknown-schema-version refusal, concurrent writers, and the acceptance property
+test that no raw value ever reaches the persisted bytes (checked verbatim *and*
+JSON-escaped, with a negative control proving the helper catches a leaky event).
+
+Like T04, this dispatch had no reachable compiler — every `cargo`/`rustc` call was
+permission-blocked — which shaped a real decision: the dependency set was chosen so the
+required `Cargo.lock` update stayed a hand-editable dependency-edge list between
+already-locked packages (`tempfile` dropped for a std-only test tempdir; uuid's `serde`
+feature dropped for a `#[serde(with)]` Display-based adapter). Full rationale in
+`docs/decisions.md`'s 2026-07-17 T05b entry.
+
+### Changed / created files
+
+- `crates/vg-audit/src/lib.rs` — `JsonlAuditSink` (open/replay/heal, fsynced append,
+  in-memory index), `OpenError`.
+- `crates/vg-audit/src/record.rs` — versioned storage schema v1 + conversions + pinned
+  wire-format tests.
+- `crates/vg-audit/tests/sink.rs` — conformance/durability/recovery/property tests.
+- `crates/vg-audit/Cargo.toml` — deps (serde, serde_json, thiserror, uuid) with the
+  lockfile-constraint note; `Cargo.lock` — vg-audit's dependency list (hand-edited, see
+  decisions entry).
+- `docs/decisions.md`, `docs/next-actions.md`, `docs/build-log/2026-07-17-an-audit-log-
+  sized-to-fit-its-lockfile.md`, this file.
+
+### Decisions
+
+Full record in `docs/decisions.md`, 2026-07-17: "T05b audit sink: JSONL storage,
+versioned schema mirrors, and dependencies chosen to fit a hand-editable lockfile."
+
+### Next Actions
+
+- PR review must run the standard verify chain (`cargo build --locked && cargo clippy
+  --all-targets -- -D warnings && cargo fmt --check && cargo test -p vg-audit`) — nothing
+  was compiled in-session.
+- T07 wires this sink into `mask()`'s pipeline assembly alongside T05's vault.
+
+### Validation status
+
+- **Not compiled or tested in the dispatch session** (toolchain permission-blocked in the
+  headless dispatch). Self-review caught three would-be compile errors before handoff.
+- **Verified during PR review (2026-07-17):** full verify chain green on the first real
+  attempt after one `fmt` pass — `cargo build --locked && cargo clippy --workspace
+  --all-targets --locked -- -D warnings && cargo fmt --check && cargo test`.
+- **Codex cross-model doubt-pass (2026-07-17):** found and fixed 5 real robustness/security
+  issues in the log-recovery path (UTF-8 torn-tail bricking the whole log; any unparseable
+  line silently skipped rather than only the torn final one; a malformed `schema_version`
+  bypassing the strict path; a duplicate `AuditId` silently shadowing; error text
+  Debug-leaking an unknown variant's payload) plus a parent-dir fsync; recovery switched
+  from newline-heal to truncation. 4 regression tests added, all green. Two limitations
+  reconciled as documented trade-offs (the sink cannot scrub raw values by design;
+  single-live-sink index coupling). Full record in `docs/decisions.md`.

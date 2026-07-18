@@ -498,3 +498,32 @@ agent_runs:
       - "artefact_default = Pass is the correct default (whole-file class; entity masking still applies via entity_default = Mask) but NOT fail-safe in the same sense; documented + flagged for T07 (artefact-Pass must not skip entity detection or it becomes a fail-open leak)."
     next_actions:
       - "Land T08 (base-drift recovery)."
+  - id: RUN-0016
+    date: 2026-07-17
+    agent: "opus (headless dispatch) + claude (review) + codex (cross-model critique x2)"
+    role: "Build Agent"
+    intent: "T08 (vg-parsers): file-aware parsers implementing Parser for json (hand-rolled byte tokenizer for offsets + tolerance), yaml (serde_yaml gate + block scanner + json flow-style fallback), toml, csv, log (regex shape-based), env/dotenv, and rust (tree-sitter), plus a cross-crate integration test feeding real Span output into vg-detectors::all_detectors(). Dispatched concurrently under Opus. Completes Wave B."
+    autonomy_level: 3
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    files_touched:
+      - "crates/vg-parsers/src/{json,yaml,toml,csv,log,env,rust,util,lib}.rs"
+      - "crates/vg-parsers/tests/detector_integration.rs"
+      - "crates/vg-parsers/Cargo.toml"
+      - "Cargo.lock"
+      - ".hekton/risk-register.yaml"
+      - "docs/risks.md"
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"
+      - "docs/build-log/2026-07-17-parsers-that-refuse-to-panic.md"
+      - "mind-palace/20-projects/factory-output/veilgremlin/session-log.md"
+    validation:
+      - "cargo build --locked && cargo clippy --workspace --all-targets --locked -- -D warnings && cargo fmt --check && cargo test: PASS in the real repo (landed onto main after T06) -- 36 vg-parsers lib + 3 cross-crate integration tests + the existing suite. Cargo.lock regenerated (4 new deps: serde_yaml, toml, tree-sitter, tree-sitter-rust); tree-sitter 0.22 / tree-sitter-rust 0.21 pair compiled without adjustment."
+      - "Fixed during review: two clippy items, two borrowed-temporary test compile errors, and one real yaml flow-style mis-parse bug (block scanner emitted {\"host\" as a bogus key instead of falling back to the JSON tokenizer). RISK-0011 (build gap) closed as mitigated."
+    risks:
+      - "Codex found no panic/out-of-bounds-span risks (the hard never-panic + span-bounds contract holds). Residual: partial/under-spanning (a # inside a quoted YAML value; single-quoted YAML flow scalars) -- documented with concrete reproducers, flagged for T07; cannot cause a missed detection yet because the T03 detectors ignore the spans parameter."
+    next_actions:
+      - "Wave B complete (T03/T04/T05/T05b/T06/T08 merged). Next: T07 (masking pipeline), carrying forward the T05/T06/T08 T07 notes."

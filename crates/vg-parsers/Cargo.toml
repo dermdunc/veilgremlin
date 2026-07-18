@@ -11,3 +11,13 @@ workspace = true
 
 [dependencies]
 vg-core = { workspace = true }
+regex = "1"
+serde_yaml = "0.9"
+toml = "0.8"
+tree-sitter = "0.22"
+tree-sitter-rust = "0.21"
+
+[dev-dependencies]
+# T08 cross-crate integration requirement (interface-contracts.md, 2026-07-16): at least
+# one integration test must feed real parser `Span` output into the T03 detectors.
+vg-detectors = { workspace = true }

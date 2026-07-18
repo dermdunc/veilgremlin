@@ -904,3 +904,59 @@ Format is trivially swappable later; flagged as a follow-up to reconcile with AD
 - **Not machine-validated this session** (no toolchain). Logic, types, and formatting
   hand-verified. Unit + integration tests written but not executed here.
 
+
+## 2026-07-17 - T08 built: `vg-parsers` (headless dispatch, compiler unreachable)
+
+### What happened
+
+Implemented `vg_core::Parser` across `crates/vg-parsers/src/`: `json.rs`, `yaml.rs`, `toml.rs`,
+`csv.rs`, `log.rs`, `diff.rs`, `env.rs`, and `rust.rs` (tree-sitter, Rust as the source
+language), a shared `util.rs`, an `all_parsers()` registry in `lib.rs`, and a cross-crate
+integration test. Every `parse` is written to the never-panic contract — best-effort spans over
+empty/truncated/binary/unbalanced input — and each module carries an
+`assert_parser_never_panics` battery of genuinely adversarial buffers, plus a registry-wide
+battery in `lib.rs`.
+
+### Changed / created files
+
+- `crates/vg-parsers/Cargo.toml` — added `regex`, `serde_yaml`, `toml`, `tree-sitter`,
+  `tree-sitter-rust` deps and a `vg-detectors` dev-dep (for the integration test).
+- `crates/vg-parsers/src/{lib,util,json,yaml,toml,csv,log,diff,env,rust}.rs` — new.
+- `crates/vg-parsers/tests/detector_integration.rs` — new (cross-crate).
+- `docs/decisions.md`, `docs/risks.md`, `.hekton/risk-register.yaml` (RISK-0011),
+  `docs/next-actions.md`, `docs/build-log/2026-07-17-parsers-that-refuse-to-panic.md`.
+
+### Decisions
+
+Full record in `docs/decisions.md`'s 2026-07-17 T08 entry: source-language choice (Rust),
+hand-rolled JSON tokenizer (serde_json gives no offsets and aborts early), serde_yaml/toml used
+as well-formedness gates with hand-rolled line-scan spans, `.env` inline-`#`-is-not-a-comment
+rule, and the mandated cross-crate classification below.
+
+### Cross-crate finding (required)
+
+`detector_integration.rs` feeds real parser `Span`s into `vg_detectors::all_detectors()` and
+pins that the detectors' `_spans` parameter is a no-op today. Classified as an **expected,
+stage-appropriate gap** (not a defect): the T03 detectors scan the whole buffer, which is a
+superset of structure-scoped scanning; the span-threading pipeline is T07 (Wave C); and the
+no-op is now test-pinned so it can't silently change. Flagged span-awareness as the natural
+T07-era fix for the 2026-07-16 entropy/phone false positives.
+
+### Validation status
+
+- **NOT compiled/tested in-session** — every `cargo`/`rustc`/`python` invocation is
+  approval-gated with no human in a one-shot dispatch (same constraint as T04). Code written for
+  correctness/panic-safety by inspection.
+- **Must run at PR review:** `cargo build` to **regenerate and commit `Cargo.lock`** (4 new deps
+  — all `--locked` CI jobs fail until then), then `cargo test -p vg-parsers && cargo clippy
+  --all-targets -- -D warnings && cargo fmt --check`. Verify the `tree-sitter`/`tree-sitter-rust`
+  version pair resolves. See RISK-0011.
+
+### Next actions
+
+- Regenerate `Cargo.lock`, verify build/test/clippy/fmt, confirm tree-sitter pins (RISK-0011).
+- Re-run the census ladder's parser+detector rung after T08 lands, per the 2026-07-16 Codex plan.
+
+### Mind-palace updated
+
+- No (vault mutation not authorised; repo-local docs updated).

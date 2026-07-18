@@ -294,3 +294,22 @@ changes:
       - "docs/decisions.md"
       - "docs/next-actions.md"
       - "docs/session-log.md"
+
+  - id: CHG-0016
+    date: 2026-07-17
+    title: "Task T08: file-aware parsers (vg-parsers) + Wave B complete"
+    intent: "Implement vg-parsers' Parser for json/yaml/toml/csv/log/env + rust (tree-sitter), plus a cross-crate integration test feeding real Span output into the T03 detectors. Adds serde_yaml/toml/tree-sitter/tree-sitter-rust deps. Dispatched under Opus. Verified: fixed one real yaml flow-style mis-parse bug + clippy/borrow issues; RISK-0011 closed as mitigated. Codex critique found no panic/span-bounds risks; under-spanning residual flagged for T07. Landed onto main after T06 via base-drift recovery. This is the last Wave B task."
+    changed_by: "opus (dispatch) + claude (review) + codex (critique x2)"
+    change_type: build
+    risk_level: medium
+    validation:
+      - "cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check && cargo test: PASS, 36 vg-parsers lib + 3 integration tests, in the real repo; tree-sitter pair compiled"
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    links:
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"
+      - ".hekton/risk-register.yaml"

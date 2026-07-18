@@ -329,3 +329,31 @@ issues found" — the only Wave B task whose complete second-round critique surf
 ### Next Actions
 
 - [ ] T08 to land next (base-drift recovery, same as T05b/T06).
+
+## Session: T08 (`vg-parsers`) built under Opus, reviewed, landed — Wave B complete
+
+**Date:** 2026-07-17
+
+### What Changed
+
+Dispatched T08 (file-aware parsers) concurrently under Opus. Implemented `Parser` for
+json (hand-rolled byte tokenizer for offsets + tolerance), yaml (serde_yaml gate + block
+scanner + json fallback for flow style), toml, csv, log (regex shape-based), env/dotenv,
+and rust (tree-sitter), plus a cross-crate integration test feeding real spans into the
+T03 detectors. Verified during review — regenerated Cargo.lock (4 new deps; tree-sitter
+pair compiled), fixed two clippy items, two borrowed-temporary test errors, and one real
+yaml flow-style mis-parse bug. Closed RISK-0011 (the build gap) as mitigated.
+
+### Decisions
+
+Full record in repo `docs/decisions.md`'s 2026-07-17 T08 entry. Two Codex critique rounds:
+no panic/out-of-bounds risks found (the hard never-panic + span-bounds contract holds); the
+residual "partial spanning could miss a value" concern is documented with two concrete
+reproducers (a `#` inside a quoted YAML value; single-quoted YAML flow scalars), flagged for
+T07 — the T03 detectors currently ignore spans, so it can't bite yet.
+
+### Next Actions
+
+- [ ] **Wave B is complete** (T03/T04/T05/T05b/T06/T08 all merged). T07 (masking pipeline)
+      is next — it wires detectors → policy → vault → audit and must honor the T07 notes
+      carried forward from T05/T06/T08.

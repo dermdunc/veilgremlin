@@ -1,0 +1,35 @@
+{
+  "version": "veilgremlin-global-v1",
+  "signature": "phase1-unverified-placeholder",
+  "entities": {
+    "default": "mask",
+    "overrides": {
+      "email": "mask",
+      "person": "mask",
+      "hostname": "pass",
+      "password": "irreversible-redact",
+      "secret": "irreversible-redact",
+      "private-key": "irreversible-redact",
+      "api-key": "irreversible-redact",
+      "access-token": "irreversible-redact"
+    }
+  },
+  "artefacts": {
+    "default": "pass",
+    "by_extension": {
+      "env": "block",
+      "pem": "block"
+    },
+    "by_language": {
+      "dotenv": "block"
+    },
+    "by_mime": {}
+  },
+  "destinations": {
+    "remote-model-prompt": { "masked_only": true, "demask_allowed": false },
+    "observability-sink": { "masked_only": true, "demask_allowed": false },
+    "local-patch": { "masked_only": false, "demask_allowed": true },
+    "local-test-fixture": { "masked_only": false, "demask_allowed": true },
+    "local-explanation-buffer": { "masked_only": false, "demask_allowed": false }
+  }
+}

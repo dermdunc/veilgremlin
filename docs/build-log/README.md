@@ -50,3 +50,4 @@ That can grow into a published site later if it earns one — see
 - [2026-07-17 — Three bugs a compiler would never have caught](2026-07-17-three-bugs-a-compiler-would-never-have-caught.md)
 - [2026-07-17 — The vault that had to remember its counting](2026-07-17-the-vault-that-had-to-remember-its-counting.md)
 - [2026-07-17 — An audit log sized to fit its lockfile](2026-07-17-an-audit-log-sized-to-fit-its-lockfile.md)
+- [2026-07-17 — The policy format the sandbox chose](2026-07-17-the-policy-format-the-sandbox-chose.md)

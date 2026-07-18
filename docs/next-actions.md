@@ -260,3 +260,14 @@ Repo source-of-truth for the work queue. Tasks T01–T11 are defined in [`archit
 - [ ] T07 consumes this sink in `mask()` pipeline assembly; coordinate demask logging so
       the vault's own `demask_event` and this `AuditSink` don't double-log (T05 note).
 - [ ] Decide serial-vs-concurrent for the remaining Wave B tasks (T06/T08) — still open.
+
+## Session Update: 2026-07-17 — T06 (policy engine) built under Opus, reviewed, landed
+
+- [x] T06 implemented in `crates/vg-policy/` (3-layer resolution, signed-pack stub,
+      hard-deny for `RemoteModelPrompt`/`ObservabilitySink` enforced in code before any
+      pack rule). Chose `serde_json` (already in lockfile) — no new dependency.
+- [x] Verified (4 config + 9 engine tests). Two Codex critique rounds; round 2 returned
+      "no issues found." Documented the `artefact_default = Pass` asymmetry.
+- [ ] **T07 hard note:** artefact-`Pass` must mean "send after entity masking," never
+      "skip detection for this file," or that default becomes a fail-open leak.
+- [ ] T08 to land next.

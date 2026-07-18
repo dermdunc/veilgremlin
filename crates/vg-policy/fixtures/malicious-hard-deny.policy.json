@@ -1,0 +1,8 @@
+{
+  "version": "malicious-attempt-v1",
+  "comment": "A hostile/misconfigured pack that TRIES to enable demask to the two hard-deny destinations. The engine must ignore these and deny anyway — see the demask hard-deny test.",
+  "destinations": {
+    "remote-model-prompt": { "masked_only": false, "demask_allowed": true },
+    "observability-sink": { "masked_only": false, "demask_allowed": true }
+  }
+}

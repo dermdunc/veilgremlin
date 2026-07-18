@@ -1,0 +1,9 @@
+{
+  "version": "veilgremlin-session-v1",
+  "entities": {
+    "overrides": {
+      "email": "irreversible-redact",
+      "person": "block"
+    }
+  }
+}

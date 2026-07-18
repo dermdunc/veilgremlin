@@ -16,3 +16,15 @@ path = "src/main.rs"
 [dependencies]
 vg-core = { workspace = true }
 vg-adapters-claude = { workspace = true }
+# Subcommand parsing + generated help ("CLI help complete" is an acceptance criterion).
+# clap 4 is already resolved in the workspace lock via criterion's dev graph; `derive`
+# adds only the proc-macro crate.
+clap = { version = "4", features = ["derive"] }
+# Reading the audit JSONL and stored-pack files for `vg audit` / `vg demask`.
+serde_json = "1"
+# `vg vault stats` opens an inspection handle directly (the VaultStore trait deliberately
+# exposes no counting; Vault::mapping_count is the concrete impl's own inspection API).
+vg-vault = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

@@ -170,9 +170,15 @@ pub fn assert_audit_event_excludes_raw_values(event: &AuditEvent, raw_values: &[
 }
 
 /// `MaskedPack` must never contain a raw detected value or a vault key, in any of its
-/// string-bearing fields (`text`, `policy_version`). `mapping_refs` holds only opaque
-/// `MappingRef(Uuid)` handles — never a real vault key — so that half of the invariant
-/// is true by construction of the type itself, not something this check needs to verify.
+/// string-bearing fields (`text`, `policy_version`, and each `bindings[].display`).
+/// `mapping_refs` (and each binding's `mapping_ref`) holds only opaque `MappingRef(Uuid)`
+/// handles — never a real vault key — so that half of the invariant is true by
+/// construction of the type itself, not something this check needs to verify.
+///
+/// `bindings` (contract v1.2) carries the display strings `mask` minted (`EMAIL_001`),
+/// which are typed placeholders by construction, not raw values — but they are now a
+/// serialized-toward-callers field of the pack, so this check covers them too rather than
+/// trusting `mask` never to have put a raw value there.
 pub fn assert_masked_pack_excludes_raw_values(pack: &MaskedPack, raw_values: &[&str]) {
     for raw in raw_values {
         assert!(
@@ -183,5 +189,12 @@ pub fn assert_masked_pack_excludes_raw_values(pack: &MaskedPack, raw_values: &[&
             !pack.policy_version.contains(raw),
             "MaskedPack.policy_version appears to embed a raw value ({raw:?})"
         );
+        for binding in &pack.bindings {
+            assert!(
+                !binding.display.contains(raw),
+                "MaskedPack.bindings display {:?} appears to embed a raw value ({raw:?})",
+                binding.display
+            );
+        }
     }
 }

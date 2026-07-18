@@ -1,6 +1,6 @@
-# VeilGremlin — Interface Contracts (v1.1, frozen)
+# VeilGremlin — Interface Contracts (v1.3, frozen)
 
-**Status:** **FROZEN as of 2026-07-15 (Task T02); amended to v1.1 on 2026-07-18 (Task T07 — `mask` gained `ctx: &Context`, see §2).** Changes now go through the contract-change protocol in `agent-factory-plan.md` §6 and bump the version below. This document was reconciled against the actual `vg-core` code at freeze time (a doubt-driven-development pass on the T02 PR found it had drifted from the implementation before either landed) — every type and trait below now matches `crates/vg-core/src/{types,traits,api}.rs` exactly, including the supporting types (§0) the original draft's illustrative signatures used but never defined.
+**Status:** **FROZEN as of 2026-07-15 (Task T02); amended to v1.1 on 2026-07-18 (Task T07 — `mask` gained `ctx: &Context`, see §2); to v1.2 and v1.3 on 2026-07-18 (Task T09 — `MaskedPack` gained `bindings`, `rehydrate` re-signed, §8 hook protocol corrected to the platform's real semantics; see §1, §2, §8).** Changes now go through the contract-change protocol in `agent-factory-plan.md` §6 and bump the version below. This document was reconciled against the actual `vg-core` code at freeze time (a doubt-driven-development pass on the T02 PR found it had drifted from the implementation before either landed) — every type and trait below now matches `crates/vg-core/src/{types,traits,api}.rs` exactly, including the supporting types (§0) the original draft's illustrative signatures used but never defined.
 
 These are the seams that let squads build in parallel. They are illustrative Rust signatures — Squad 0 owns the canonical definitions in `vg-core`. Other squads implement against these traits and **do not** depend on each other's internals.
 
@@ -97,9 +97,17 @@ pub struct Span { pub start: usize, pub end: usize, pub node_kind: Option<NodeKi
 pub struct MaskedPack {
     pub text: String,                 // placeholders substituted
     pub mapping_refs: Vec<MappingRef>,// opaque handles into the vault
+    // v1.2 (2026-07-18, Task T09): the display↔ref pairing `mask` recorded at intern
+    // time, one per distinct minted display. Additive; carries no raw values. Exists so
+    // `rehydrate` substitutes ONLY displays this pack minted (T07 banked requirement:
+    // never pattern-scan text for placeholder-shaped strings).
+    pub bindings: Vec<PlaceholderBinding>,
     pub stats: MaskStats,             // counts by EntityType, blocked artefacts
     pub policy_version: String,
 }
+
+/// v1.2: one minted display string and the opaque ref it resolves through.
+pub struct PlaceholderBinding { pub display: String, pub mapping_ref: MappingRef }
 
 pub struct MappingRef(pub Uuid);      // handle only; never the value
 
@@ -119,7 +127,9 @@ pub fn scan(input: &Input, ctx: &Context) -> Vec<Finding>;
 pub fn mask(input: &Input, ctx: &Context, policy: &Policy, ns: &Namespace)
     -> Result<(MaskedPack, Vec<MappingRef>, AuditEvent), MaskError>;
 
-pub fn rehydrate(masked: &str, dest: Destination, actor: &Actor)
+// v1.2 (2026-07-18, Task T09): re-signed — see the versioned note below.
+pub fn rehydrate(pack: &MaskedPack, policy: &Policy, ns: &Namespace,
+                 dest: Destination, actor: &Actor)
     -> Result<String, RehydrateDenied>;
 
 pub fn benchmark(corpus: &Corpus, policy: &Policy) -> Metrics;
@@ -137,6 +147,18 @@ pub fn benchmark(corpus: &Corpus, policy: &Policy) -> Metrics;
 > callers pre-compute `Vec<Finding>` (which would duplicate `scan`'s logic at every call
 > site and let a caller mask a stale/hand-forged finding set). No other signature changed;
 > `scan`/`rehydrate`/`benchmark` are untouched. See `../decisions.md`'s 2026-07-18 T07 entry.
+
+> **Contract change v1.1 → v1.2 (2026-07-18, Task T09) — `MaskedPack` gained `bindings`;
+> `rehydrate` re-signed.** The frozen `rehydrate(masked: &str, dest, actor)` could not be
+> implemented against two hard requirements at once: it had no vault/policy handle to
+> resolve through, and the T07 review banked that demask must resolve **exclusively via
+> MappingRefs the pack itself carries — never by pattern-scanning text** (text already
+> containing `EMAIL_001`-shaped strings is indistinguishable from pipeline output).
+> Resolved via the contract-change protocol: (a) `MaskedPack` gains the additive
+> `bindings: Vec<PlaceholderBinding>` field pairing each minted display with its ref;
+> (b) `rehydrate(pack, policy, ns, dest, actor)`, keeping the hard-deny check **first**,
+> substitution only via pack-minted displays, longest-display-first. Downstream: no
+> pre-T09 caller existed. See `../decisions.md`'s 2026-07-18 T09 entry.
 
 ---
 
@@ -243,8 +265,11 @@ Contract: append-only; **no raw values** in any variant (refs/counts/versions on
 
 ## 8. Adapter contract (implemented by `vg-adapters-claude`, consumes `vg-core`)
 
-- Claude Code hooks map to: `UserPromptSubmit` → `mask(prompt)`; `PreToolUse`/`PostToolUse` → `mask(tool_io)`; pre-request → assemble `MaskedPack` only.
-- Exit codes: `0` pass-through, `2` transformed (masked), `1` block (with reason to stderr) — matching Claude Code hook semantics.
+- Claude Code hooks map to: `UserPromptSubmit` → `mask(prompt)`; `PreToolUse` → `mask(tool_input)`; `PostToolUse` → `mask(tool_response)`; pre-request → assemble `MaskedPack` only.
+- **Hook protocol (v1.3 — corrected 2026-07-18, Task T09).** The v1 line here ("`0` pass-through, `2` transformed, `1` block — matching Claude Code hook semantics") did **not** match Claude Code hook semantics: on the real platform exit `2` is the only *blocking* exit code (stdout is discarded, stderr feeds back), any other non-zero exit is a **non-blocking warning that lets the raw content continue**, and structured output is parsed from stdout JSON **only on exit 0**. As frozen, every fail-closed path failed open and every transform over-blocked (T09 doubt-pass finding, verified against the platform docs). Actual protocol:
+  - exit `0`, empty stdout — pass-through (nothing sensitive);
+  - exit `0`, JSON stdout — the transform: `PreToolUse` → `hookSpecificOutput.updatedInput` (masked tool input substituted before the tool runs); `PostToolUse` → `hookSpecificOutput.updatedToolOutput` (masked result substituted before the model sees it); `UserPromptSubmit` → the platform cannot rewrite a prompt, so `{"decision":"block"}` with the masked version in `reason` for the user to resubmit (fail-closed at the cost of one resubmit);
+  - exit `2`, reason on stderr — block (policy Block, unparseable payload, schema drift, masking error, or masked content that no longer fits the payload's JSON shape).
 - The wrapper (`vg run -- claude ...`) prints the pre-send summary from `MaskStats` and routes the masked request to Bedrock.
 - The adapter never calls `vault.resolve` directly; demask is a separate user-invoked `vg demask` flow through `rehydrate`.
 
@@ -253,4 +278,6 @@ Contract: append-only; **no raw values** in any variant (refs/counts/versions on
 ## Versioning
 - **v1** — this document, frozen 2026-07-15 (Task T02), reconciled against the actual `vg-core` code at freeze time. See `../decisions.md`'s 2026-07-15 entry for what changed between the original draft and this frozen version (added §0 supporting types; `EntityType::Custom`; `PolicyLayers` `Path`→`PathBuf`; namespace-isolation and zeroize-cosmetic notes on `VaultStore`/`Secret`; conformance-helper coverage notes).
 - **v1.1** — 2026-07-18 (Task T07). `mask` gained a `ctx: &Context` parameter (`mask(input, ctx, policy, ns)`) so it can reach the detectors/parsers `scan` composes; nothing else changed. See §2's inline contract-change note and `../decisions.md`'s 2026-07-18 T07 entry. Downstream: no current caller existed (the CLI/adapters had not yet wired `mask`), so no call sites needed migrating — future callers pass the same `Context` they build for `scan`.
+- **v1.2** — 2026-07-18 (Task T09). `MaskedPack` gained `bindings: Vec<PlaceholderBinding>` (additive); `rehydrate` re-signed to `rehydrate(pack, policy, ns, dest, actor)` with the hard-deny gate kept first and substitution only via pack-minted displays. See §1/§2 inline notes and `../decisions.md`'s 2026-07-18 T09 entry.
+- **v1.3** — 2026-07-18 (Task T09 doubt-pass). §8's hook exit-code scheme corrected to the platform's real semantics: transform = exit 0 + JSON (`updatedInput` / `updatedToolOutput` / `decision:block`-with-masked-resubmit), block = exit 2. The frozen `0/2/1` scheme was inverted and failed open. No `vg-core` type changed; this is an adapter-boundary correction.
 - Increment on any breaking change to a public type/trait above. Record the bump in `../decisions.md` and notify downstream squads.

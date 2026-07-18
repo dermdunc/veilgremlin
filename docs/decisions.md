@@ -1633,33 +1633,243 @@ cycle yielding a single already-fixed Medium — the diminishing-returns pattern
 doubt-driven-development skill names as the stopping point. Full suite green: pipeline tests
 8 -> 9.
 
-## 2026-07-18 - CI red since T05: keyring's Linux Secret Service backend carried two unmaintained crates
+## 2026-07-18 — T09: `vg` CLI + Claude Code adapter (contract v1.1 → v1.2)
 
-### Context
+### Context — a third distinct dispatch failure mode, and the rescue
 
-The human noticed GitHub CI failing. Investigation: **only the `cargo-deny check` job was red
-(every other job — build, clippy, fmt, test, audit, bench — green on the remote), and it had
-been red on every run since the T05 merge.** Cause: `keyring v2`'s default `platform-all`
-features pull the Linux Secret Service backend (`secret-service` → `zbus v3`), whose tree
-carries two RUSTSEC-unmaintained crates — `derivative` (RUSTSEC-2024-0388) and `instant`
-(RUSTSEC-2024-0384). Local verify never saw it because those dependencies are
-Linux-target-only: `cargo tree -i derivative` finds nothing on macOS without `--target all`,
-while CI's ubuntu `cargo-deny` evaluates the full cross-target graph.
+The Opus dispatch was killed by **`API Error: Connection closed mid-response`** — a transient
+network drop, distinct from T01's permission stall, T02's tool timeout, and T03's
+clarifying-question dead-end. It died *after* writing the adapter and contract work (1,254
+lines: `hook.rs`, `pack.rs`, `runtime.rs`, `state.rs`, `wrapper.rs`, the v1.2 contract change,
+`tests/demask.rs`) but *before* the CLI, runbook, or docs. Per the runbook's human-rescue
+procedure (the T02 precedent), the interrupted work was finished in place rather than
+re-dispatched: everything Opus wrote compiled clean on the first real build, zero errors.
 
-### Decision
+### Contract change v1.2 (executed by Opus, per the spec's direction)
 
-Remove the unmaintained crates from the graph rather than ignoring the advisories:
-`keyring = { default-features = false, features = ["platform-macos", "platform-windows",
-"linux-default-keyutils"] }` — macOS keeps the Security-framework backend (the spec's
-"macOS first"), Windows keeps its native store, and Linux drops D-Bus Secret Service for
-kernel keyutils (no zbus). `zbus`/`secret-service`/`derivative`/`instant` all leave
-`Cargo.lock`; `cargo deny check` fully green locally (`advisories ok, bans ok, licenses ok,
-sources ok`).
+- `MaskedPack` gains `bindings: Vec<PlaceholderBinding { display, mapping_ref }>` — populated
+  by `mask` at intern time, carrying a typed display and an opaque UUID, never a value.
+- `rehydrate` re-signed: `rehydrate(pack, policy, ns, dest, actor)` — hard-deny checked FIRST
+  (before engine or vault), then `demask_allowed`, then per-binding `vault.resolve`,
+  substituting **only the displays the pack itself minted** (longest-display-first so a
+  shorter display can't corrupt a longer one it prefixes). This is what makes the banked
+  "demask via `MappingRef`s only, never pattern-scanning" requirement real.
 
-### Process lesson (recorded, not excused)
+### Judgment call flagged for the doubt-pass: `rehydrate` DOES emit `AuditEvent::DemaskDecision`
 
-Five PRs (#12–#19 era) merged while the remote deny job was red, because the review loop ran
-the local verify chain but never checked `gh run list` after pushing — **the exact
-local-green-vs-remote-green lesson T01's own doubt-pass taught on 2026-07-14.** The
-post-merge CI check is now part of the loop: after any merge, confirm the remote run's
-conclusion before calling the task landed.
+The T05/T07-banked requirement said the vault owns demask attribution — no `DemaskDecision`
+double-logging from the pipeline. Opus deviated, with an argued rationale left in the code:
+the vault only logs `resolve` *attempts*, so a **hard-denied demask never touches the vault
+and would otherwise leave no audit trace at all**. The two records are different grains
+(vault: per-binding resolution attempts; rehydrate: one authorisation outcome per demask
+call) and non-redundant. Accepted as the better reading of the requirement's *intent*
+(auditability of denials) over its letter — verified live: a denied
+`vg demask --to remote-model-prompt` writes `{"kind":"demask_decision","allowed":false}` and
+the vault stays untouched.
+
+### What the rescue added (this session, matching the adapter's conventions)
+
+- **`vg-cli`** (the piece the crash prevented): `run` (writes hook settings, prints the
+  pre-send summary, auto-appends `--settings` for a wrapped `claude*`, passes Bedrock env
+  through — no HTTP client), `hook` (section-8 exit codes; stdin JSON), `inspect` (classes +
+  spans, **never** matched text), `diff --masked` (masked text + stats; persists the pack),
+  `demask --from <pack> --to <dest>` (stored packs only — never bare text), `audit`,
+  `policy check`, `vault stats`. clap-derived help throughout.
+- **CLI-level integration tests** (`crates/vg-cli/tests/cli.rs`, via `CARGO_BIN_EXE_vg` — no
+  new test deps): binary round trip, hard-deny with no raw value on any stream, hook
+  transform (exit 2) and pass-through (exit 0), inspect-never-leaks, help completeness.
+  These sit on top of Opus's lib-level `tests/demask.rs` (round trip, both deny paths,
+  spoofed-placeholder-untouched, denied-demask audit).
+- **`docs/runbook-hooks.md`** — the walkthrough for the human UX-invisibility session (the
+  acceptance criterion only a human can satisfy; scheduled at review, not claimed here).
+- Live smoke over the real binary: mask → `contact EMAIL_001 about IBAN IBAN_001` →
+  demask restores the original byte-for-byte → hard-deny refused with exit 1 → both
+  decisions in `vg audit`.
+
+### Validation
+
+Full workspace chain green: build, `clippy -D warnings` (three trivial lints fixed:
+`sort_by_key` x2, `ptr_arg`/`map_clone` in the new CLI), `fmt --check`, tests — **213 tests
+across 28 binaries, 0 failures** (5 new CLI integration + 5 lib demask + 38 vg-core units
+with the bindings type). Lockfile updated for `clap`(derive) + `serde_json` in `vg-cli` only.
+
+## 2026-07-18 — T09 doubt-pass round 1 (Fable, fresh context): the §8 hook contract was inverted; contract v1.2 → v1.3
+
+**Context.** Per the standing instruction (Opus authors → Fable doubts), a fresh-context
+Fable subagent ran an adversarial pass over the full T09 diff (2,407 lines: Opus's
+adapter/contract work + the rescue CLI/tests), given ARTIFACT + CONTRACT only. It returned
+**18 findings (6 High / 8 Med / 4 Low)** — the strongest verdict of the project. Every
+finding was re-verified against the code before classification; the keystone finding was
+additionally verified against the platform's own hooks documentation rather than trusting
+either the reviewer or the author.
+
+### The keystone (finding 1, High → contract v1.3)
+
+§8's frozen exit-code scheme (`0` pass / `2` transformed / `1` block, "matching Claude
+Code hook semantics") **did not match Claude Code hook semantics**. Verified against the
+hooks docs: exit **2** is the platform's only *blocking* exit code (stdout discarded,
+stderr fed back); any other non-zero exit — including our "block" = 1 — is a
+**non-blocking warning after which the raw content continues**; structured output is
+parsed from stdout JSON **only on exit 0**. So as frozen: every fail-closed path
+(unparseable payload, masking error, policy Block) failed **open** in the only consumer
+the wrapper configures, and the transform path (exit 2 + masked stdout) never substituted
+anything. The whole masking-by-replacement mechanism was inert against the real platform.
+
+**Fix (v1.3, adapter boundary only — no `vg-core` type changed):**
+- Block (policy Block, parse failure, schema drift, mask error, unrenderable masked
+  payload) → **exit 2**, reason on stderr.
+- Transform → **exit 0 + JSON**: `PreToolUse` → `hookSpecificOutput.updatedInput` (true
+  in-flight masking of tool input — better than the old design, which had no substitution
+  at all); `PostToolUse` → `hookSpecificOutput.updatedToolOutput` (true masking of the
+  tool result); `UserPromptSubmit` → the platform cannot rewrite a prompt, so
+  `{"decision":"block"}` with the masked text in the reason for the user to resubmit.
+  **Deliberate UX cost:** a sensitive prompt now costs one resubmit; warn-and-send would
+  ship the raw prompt and defeat the product. The runbook UX session judges this honestly.
+- If a masked tool payload no longer re-parses into the payload's JSON shape → block
+  (fail closed), never send raw.
+- `docs/architecture/interface-contracts.md` §8 rewritten; missing v1.2 amendment (Opus
+  referenced it from code but never amended the document) added at the same time.
+
+### Also fixed this round (each re-verified, not rubber-stamped)
+
+- **F2 (High):** `hook_command` now shell-quotes `vg_exe` as well as the state dir — an
+  install path with a space previously made every hook fail to spawn, which under real
+  semantics (finding 1) meant a **silently unmasked session**.
+- **F6 (High):** the worktree's `vg-vault/Cargo.toml` still carried the pre-CI-fix
+  `keyring = "2"` line (stale base — the worktree was cut before the cargo-deny fix
+  merged), so the tollgate auto-apply would have **silently reverted the CI fix**. File
+  restored byte-identical to main; the hunk vanishes from the landing diff.
+- **F8 (Med):** schema drift now fails closed — a payload missing/mistyping `prompt` /
+  `tool_input` / `tool_response` blocks instead of passing through unmasked (a Claude
+  Code payload rename would otherwise disable the shield forever, indistinguishable from
+  "nothing sensitive"). Well-formed-but-empty subjects still pass through. Tested.
+- **F9 (Med, the flagged DemaskDecision deviation):** resolved per the banked T05
+  requirement — the pipeline now writes DemaskDecision **only for denials** (the one
+  outcome the vault can never see, since hard-deny/policy-deny return before any
+  `resolve`); allowed demasks are attributed solely by the vault's own fail-closed
+  per-resolve demask log. Double-logging removed. Residual: a denial whose audit write
+  fails is still denied but unrecorded — accepted, documented in the fn doc.
+- **F7 (Med):** `rehydrate` substitution rewritten as a boundary-aware single pass:
+  token boundaries (a minted `EMAIL_001` no longer corrupts unrelated `EMAIL_0015`),
+  restored values are never re-scanned, and a tampered pack with an empty display is
+  refused at load (`str::replace("")` would have inserted the secret at every character
+  boundary). Regression test added (`substitution_respects_token_boundaries…`).
+- **F10 (Med):** `vg demask` now detects a partial restore (unresolved bindings leave
+  their placeholders) — warns with the count and exits non-zero instead of silently
+  emitting a half-restored artefact.
+- **F11 (Med):** `vg audit` withholds unparseable log lines instead of echoing them
+  verbatim (only parsed events are known redaction-safe; vg-audit's own sink refuses such
+  lines for exactly this reason).
+- **F12 (Med):** vault sets a 5s `busy_timeout` — T09 made one-process-per-hook the
+  normal mode and Claude Code parallelises tool calls, invalidating the vault's
+  "multi-process out of scope" assumption; a collision now waits briefly instead of
+  failing the hook. Cross-process ordinal-reseed races remain a documented Phase-1 limit.
+- **F13 (Med):** `vg run` detects `--settings=FILE` as well as `--settings FILE`, and
+  **warns loudly when the user's own settings mean VeilGremlin's hooks were NOT
+  injected** (previously the pre-send summary claimed protection that wasn't wired).
+- **F15 (Low):** stored-pack schema check is `!=` (unknown version), not `>` (a
+  hand-edited `schema_version: 0` was previously mis-read as v1).
+- **F17 (Low, partial):** `VG_VAULT_KEY_HEX` now prints a loud warning when honoured
+  (test seam visibly flagged in real sessions).
+- **F5 (High, mitigation):** the state dir now self-gitignores (`.veilgremlin/.gitignore`
+  containing `*`, written once at creation) — packs/audit/vault can no longer be swept
+  into a commit by accident.
+
+### Accepted trade-offs / deferred (documented, not hidden)
+
+- **F3 (High) — upward state-dir discovery trusts any ancestor `.veilgremlin/`.** A
+  cloned repo committing a permissive policy could disable the shield; a stray
+  `~/.veilgremlin` captures every repo below it. Same trust model as committed git
+  hooks/direnv, but for a *privacy control* it deserves better: **T11 follow-up** (e.g.
+  refuse or warn on a discovered-not-created state dir; policy signature verification is
+  already stubbed for Phase 2).
+- **F4 (High) — demask authorisation is attribution, not authentication.** `--actor`/
+  `--role` are self-asserted; `Destination` is a label, not a channel; and the wrapped
+  agent itself can run `vg demask` (or read pack files' plaintext mapping refs) via its
+  Bash tool. Phase 1 is a single-user local tool and the gate is honest attribution +
+  audit, not an enforcement boundary — but the agent-can-demask hole is real and goes to
+  **T11** (candidate: hooks refuse to spawn `vg demask` from inside a wrapped session /
+  packs get restrictive perms + the vault key never enters the wrapped env).
+- **F5 (High, remainder) — packs accumulate masked text plaintext, unbounded.** Gitignore
+  mitigates exfil-via-commit; TTL/purge (`vg pack purge`) deferred to **T10/T11**.
+- **F14 (Med, residual):** a pack-save failure still delivers the transform with only a
+  stderr warning (debug log under v1.3); losing reversibility beats blocking the
+  session's whole tool call. Accepted.
+- **F16 (Low):** clap argument errors exit 2 → under v1.3 that now reads as a *block* —
+  fail-closed aliasing, acceptable (was previously "transformed by empty string").
+- **F18 (Low, partial):** a Bash `echo X > .env` carries no `file_path`, so artefact
+  Block is bypassed (entity detection still applies) — inherent to hint-based artefact
+  classification, **T10 eval** should measure it; the incoherent PostToolUse
+  tool_input-fallback the finding also flagged was removed by the v1.3 rework (response
+  only); masked-JSON splice damage is now fail-closed (see keystone fix); dead
+  `by_language: dotenv` config noted for T10.
+
+**Validation after round 1:** full workspace green — build, `clippy -D warnings`, `fmt`,
+**217 tests / 28 binaries / 0 failures** (new: 3 hook-protocol CLI tests, drift +
+transform-shape unit tests, boundary regression test). Round 2 (Codex cross-model, per
+the established two-round pattern) pending explicit go-ahead.
+
+## 2026-07-18 — T09 doubt-pass round 2 (Codex, cross-model): the fail-open hole *around* the round-1 fix
+
+**Context.** Per the established two-round pattern, `codex exec --sandbox read-only`
+(codex-cli 0.133.0) reviewed the post-round-1 diff (code + tests only, 2,783 lines;
+author docs deliberately excluded per the doubt-driven-development skill), with the
+CONTRACT section now encoding the *real* platform hook semantics. Verdict: 3 High /
+3 Med / 1 Low. Reconciliation:
+
+- **High 1 — VALID, FIXED (the round's real catch):** round 1 made every path *inside*
+  `run_hook` fail closed, but an error that bubbled OUT of the hook command — state-dir
+  resolution, `Engine::open` on a malformed policy / unwritable dir / failed keychain —
+  hit `main()`'s generic handler and exited **1**, the non-blocking code: raw content
+  would continue. Fourth instance this project of a fix leaving its own seam. `main()`
+  now exits 2 for ANY error on the hook path; regression test added
+  (`hook_fails_closed_when_the_engine_cannot_open`).
+- **High 2 — valid TRADE-OFF, already documented:** an exact look-alike collision (raw
+  text literally containing `EMAIL_001` while the pack mints `EMAIL_001`) is still
+  substituted at both sites. This is the inherent in-band residual the `rehydrate` doc
+  comment records (the reviewer could not see it — author docs were excluded); boundary
+  checks fix the *substring* class, not the *exact-collision* class, which cannot be
+  fixed at demask time (same bytes). Real fix would be collision-avoiding minting at
+  mask time (skip an ordinal whose display already occurs in the raw text) — queued as a
+  T10/T11 candidate, not done here.
+- **High 3 — CONTRACT MISREAD (mine):** "MaskedPack must never contain a raw detected
+  value" — the invariant as frozen applies to values whose policy class requires
+  masking/redaction; an entity a policy explicitly sets to `pass` passes by *policy
+  decision*. The compressed CONTRACT line fed to the reviewer over-claimed. Noted for
+  future CONTRACT extracts; no code change.
+- **Med 1 — VALID, FIXED:** the hard-deny gate consulted the policy engine before
+  deciding (the `version()` fetch), and `vg demask` opened the whole engine before
+  `rehydrate` could refuse — so "refused regardless of whether the vault is even
+  reachable" was only behaviourally true (an open failure denied by erroring). Now: the
+  version fetch happens only inside the post-decision audit write, `Destination::
+  is_hard_deny` is public, and the CLI refuses hard-deny destinations **before**
+  `Engine::open`.
+- **Med 2 — VALID, FIXED:** `masked_payload` accepted any re-parse; a finding that
+  rewrote an object *key* (or spliced structure) produced a schema-changed
+  `updatedInput`. New `same_shape` guard: masked JSON must differ from the original only
+  in string values (same nesting, same keys, same array lengths, identical non-string
+  scalars) — anything else blocks.
+- **Med 3 — VALID, FIXED (refinement):** partial-restore detection now compares
+  boundary-token *counts* (pack text vs restored text) instead of mere presence, so a
+  restored secret that legitimately contains placeholder-shaped text no longer
+  false-fails a successful demask.
+- **Low 1 — VALID, FIXED:** `lib.rs` crate docs still described the inverted v1
+  protocol; brought in line with v1.3.
+
+**STOP (named):** two full adversarial cycles complete (Fable fresh-context, then Codex
+cross-model against the corrected contract). Round 2's only new High was a seam of the
+round-1 fix and is closed with a test; every remaining known issue is a documented
+trade-off with a T10/T11 owner. Next scrutiny is the human tollgate + the T11 review,
+which is cycle 3 by a different reviewer class. **Validation:** full workspace green —
+`clippy -D warnings`, `fmt`, **218 tests / 28 binaries / 0 failures**.
+
+### Round-2 addendum (2026-07-18, caught by the demo-plan critique)
+
+The round-2 "hard-deny before `Engine::open`" fix in `vg demask` over-corrected: the
+pre-open early return also skipped `rehydrate`, silently **un-auditing** the one denial
+the command can produce (the fresh-context review of the dogfood demo plan caught it by
+noticing the plan's "denial appears in `vg audit`" step had become unsatisfiable).
+Corrected to: engine opens → the denial flows through `rehydrate` and is audited, as
+before; engine *cannot* open and the destination is hard-deny → still DENIED (stderr
+says "denial unaudited"), never an error. Both properties now hold at once. CLI suite
+re-verified green.

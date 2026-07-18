@@ -332,3 +332,21 @@ changes:
       - "docs/next-actions.md"
       - "docs/session-log.md"
       - "docs/architecture/interface-contracts.md"
+  - id: CHG-0018
+    date: 2026-07-18
+    title: "Task T09: vg CLI + Claude Code adapter; interface contract v1.1 -> v1.2 -> v1.3"
+    changed_by: "opus (dispatch, rescued) + fable (rescue + doubt-pass fixes) + codex (cross-model round)"
+    change_type: build
+    risk_level: high
+    validation:
+      - "cargo build && cargo clippy --workspace --all-targets -- -D warnings && cargo fmt --check && cargo test --workspace: PASS, 218 tests / 28 binaries / 0 failures in the T09 worktree"
+    approvals:
+      required: true
+      status: pending
+      approver: coderturtle
+    links:
+      - "docs/decisions.md"
+      - "docs/session-log.md"
+      - "docs/architecture/interface-contracts.md"
+      - "docs/runbook-hooks.md"
+      - ".hekton/build-tasks/T09-output.md"

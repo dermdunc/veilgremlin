@@ -147,6 +147,13 @@ impl Vault {
         }
         let conn = Connection::open(&config.db_path)
             .map_err(|e| error::io_err(format!("open {:?} failed: {e}", config.db_path)))?;
+        // T09 made one-process-per-hook the normal operating mode, and Claude Code issues
+        // parallel tool calls — so concurrent short-lived processes on this DB file are
+        // now expected, not out of scope. A busy timeout turns a write collision into a
+        // brief wait instead of an immediate SQLITE_BUSY -> blocked hook (doubt-pass
+        // finding). Cross-process ordinal reseed races remain a documented Phase-1 limit.
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(sql_err)?;
         apply_key(&conn, &key)?;
         conn.execute_batch(schema::SCHEMA).map_err(sql_err)?;
 

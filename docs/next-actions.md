@@ -271,3 +271,17 @@ Repo source-of-truth for the work queue. Tasks T01–T11 are defined in [`archit
 - [ ] **T07 hard note:** artefact-`Pass` must mean "send after entity masking," never
       "skip detection for this file," or that default becomes a fail-open leak.
 - [ ] T08 to land next.
+
+## Session Update: 2026-07-17 — T08 (parsers) built under Opus, reviewed, landed — Wave B COMPLETE
+
+- [x] T08 implemented in `crates/vg-parsers/` (json/yaml/toml/csv/log/env + rust
+      tree-sitter, cross-crate integration test to the T03 detectors). Verified: 36 lib +
+      3 integration tests. Fixed one real yaml flow-style mis-parse bug + clippy/borrow
+      issues. RISK-0011 (build gap) closed as mitigated.
+- [ ] **T07 hard note (parsers):** partial/under-spanning (a `#` inside a quoted YAML
+      value; single-quoted YAML flow scalars) must not let a span-aware detector miss part
+      of a value once T07 gates detection on spans — two concrete reproducers in
+      `docs/decisions.md`. Doesn't bite until T07 (detectors ignore spans today).
+- [x] **Wave B complete: T03, T04, T05, T05b, T06, T08 all merged.** Next: T07 (masking
+      pipeline) — the Wave C integration task that wires detectors → policy → vault →
+      audit, carrying forward the T05/T06/T08 T07 notes.

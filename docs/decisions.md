@@ -1302,3 +1302,165 @@ issues found after thorough examination."** This is the only Wave B task whose s
 critique surfaced nothing — consistent with the manual verification above (hard-deny
 unbypassable, layering fail-safe, defaults documented). No code change from round 2.
 
+
+## 2026-07-17 - T08 (`vg-parsers`) built (headless dispatch, unable to reach a compiler)
+
+### Context
+
+T08 (Squad 2): implement `vg_core::Parser` in `crates/vg-parsers/` — one module per format
+(`json`, `yaml`, `toml`, `csv`, `log`, `diff`, `env`) plus tree-sitter for one source
+language. Hard contract: **never panic on malformed input**, return best-effort spans.
+Cross-crate requirement (interface-contracts.md, 2026-07-16): feed real `Span` output into
+`vg_detectors::all_detectors()` and record whether the detectors' `_spans` no-op is an
+expected gap. One-shot headless dispatch — ambiguities resolved by judgment and recorded
+here rather than asked.
+
+### Judgment calls recorded (no follow-up channel)
+
+1. **Source language for tree-sitter = Rust** (`rust.rs`, `ArtefactKind::SourceCode("rust")`).
+   The task said pick something simple and common if ambiguous; Rust is this project's own
+   language (ADR-001) and the grammar crate is well maintained. Tree-sitter is error-tolerant
+   by construction (produces `ERROR`/`MISSING` nodes, never fails), which matches the
+   never-panic contract directly.
+
+2. **JSON is hand-rolled, not `serde_json`.** `serde_json`'s tree parser gives no byte offsets
+   and aborts at the first syntax error — the opposite of "best-effort spans over malformed
+   input." `json.rs` is a single-pass tolerant byte tokenizer that classifies each string as an
+   object `Key` (followed by `:`) or a `StringLiteral`/`Value`, and degrades an unterminated
+   final string to a span clamped at end-of-buffer.
+
+3. **YAML and TOML: third-party parser as a well-formedness gate, hand-rolled line scanner for
+   spans.** `serde_yaml` and the `toml` crate both parse into an owned value tree with **no byte
+   offsets**, so neither can answer "where in the buffer is this key." They are still
+   load-bearing: (a) exercised on every parse, including the adversarial never-panic battery, so
+   the third-party parsers' own panic-safety is verified alongside ours; and (b) for YAML, a
+   *valid* document with no block-style `key:` structure (i.e. flow style `{a: 1}`, which is
+   JSON-shaped) falls back to the JSON tokenizer for spans. Block-style YAML / TOML `key = value`
+   / `[table]` / comments come from the quote-aware line scanners. This is why `serde_yaml` and
+   `toml` are dependencies even though the spans don't come from them — recorded so a reader
+   doesn't mistake them for dead weight. (Only `yaml.rs` was contractually required to "add
+   serde_yaml or similar"; the `toml` crate is used the same way by choice, not mandate.)
+
+4. **`.env` inline `#` is not a comment.** dotenv tools disagree on whether `KEY=val # x` has a
+   comment; a value like `p#ssw0rd` or a URL fragment must never be truncated (and secrets live
+   in exactly these values). Only a whole-line-leading `#` is a comment. TOML/YAML `#` handling
+   *is* quote-aware because their grammars define it.
+
+5. **Span structural tags** use the frozen `NodeKind` variants: object/map keys → `Key`, scalar
+   values → `Value`/`StringLiteral`, CSV body cells → `Field(header_name)` (column-aware),
+   log timestamp/level and diff added/removed/path → `Field(...)`, hunk headers → `Other("hunk")`,
+   comments → `Comment`, tree-sitter identifiers → `Identifier`. All spans route through a single
+   `util::span` helper that clamps `end` to buffer length and `start ≤ end`, so the Parser
+   span-bounds invariant holds unconditionally even if a format's own scanning logic has an
+   off-by-one.
+
+### Cross-crate integration finding: the detectors' `_spans` no-op is an EXPECTED, stage-appropriate gap
+
+**Required classification (interface-contracts.md, 2026-07-16).** `crates/vg-parsers/tests/detector_integration.rs`
+feeds this crate's real `Span` output into `vg_detectors::all_detectors()` on realistic JSON,
+`.env`, YAML, and CSV fixtures, and additionally pins the observed behaviour: feeding real
+parser spans, an empty slice, and deliberately *wrong* spans all yield **identical** findings —
+because every T03 detector's signature is `detect(&self, buf, _spans)`, ignoring `spans` today.
+
+**This is an expected gap, not a real one**, for three reasons:
+- **No contract is violated.** The detectors still satisfy their contract (valid findings,
+  in-bounds spans, determinism) without consuming `spans`. The T03 detectors are regex/entropy
+  scanners over the whole buffer; whole-buffer scanning is a *superset* of structure-scoped
+  scanning, so nothing is missed by ignoring structure — it can only over-scan, never under-scan.
+- **The pipeline that threads parser spans into detectors is T07** (masking-pipeline wiring in
+  `vg-core`, Wave C), which does not exist yet. Parsers (T08) *produce* spans; T07 *wires* them
+  in; span-aware detection is a deliberately later enrichment, consistent with the phased plan
+  and interface-contracts.md §3–§4.
+- **The no-op is now pinned by a test.** If a future change (T07, or a span-aware detector) makes
+  `detect` actually consume `spans`, `detectors_currently_ignore_the_spans_parameter` breaks
+  first and loudly, forcing this classification to be revisited rather than the no-op being
+  silently assumed still true.
+
+**Deferred opportunity, flagged for T07 (not a defect now):** the 2026-07-16 census found the
+entropy/phone detectors' dominant false positives were on file paths and snake/kebab identifiers.
+Span-awareness is the natural structural fix — e.g. scanning only `Value`/`StringLiteral` spans
+and skipping `Key`/`Identifier`/`Comment` spans would cut exactly that false-positive class. That
+is a T07-era enhancement (wire spans through, then let detectors opt into structure), not
+something T08 can or should do inside `vg-detectors` (ownership rule: edit only your crate).
+
+### Verification status — NOT built in-session (compiler unreachable), and a Cargo.lock action required
+
+As with T04, this headless dispatch could not reach a compiler: every `cargo`/`rustc`/`python`
+invocation (and any shell wrapper around one) is gated behind an approval prompt with no human
+in a one-shot dispatch. The code is written for correctness and panic-safety by inspection, with
+a thorough per-module adversarial `assert_parser_never_panics` battery (empty, truncated UTF-8,
+unbalanced delimiters, all-NUL, every-byte-value, binary-masquerading-as-format) plus a shared
+registry-wide battery in `lib.rs`. **These must be run at PR review**, exactly as T04 was:
+`cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check &&
+cargo test -p vg-parsers`.
+
+**Two review-time actions specific to T08 (distinct from T04, which added no dependencies):**
+- **`Cargo.lock` MUST be regenerated.** T08 adds four dependencies (`serde_yaml`, `toml`,
+  `tree-sitter`, `tree-sitter-rust`) but `Cargo.lock` could not be updated without running cargo.
+  Until a maintainer runs `cargo build` (or `cargo update -p vg-parsers`) and commits the
+  refreshed `Cargo.lock`, **every `--locked` CI job (build, test, clippy, bench) will fail
+  immediately** with "lock file needs to be updated." This is the top handoff item.
+- **Verify the tree-sitter version pair resolves and compiles.** `tree-sitter = "0.22"` +
+  `tree-sitter-rust = "0.21"` were chosen for the `set_language(&Language)` / `language()` API
+  used in `rust.rs`. This pairing is the single most likely thing to need adjustment on first
+  real build (the tree-sitter grammar crates changed `language()` → `LANGUAGE` in later
+  versions); if it doesn't resolve, pin the matching pair rather than changing the call site
+  blindly. `cargo fmt` at review will also absorb any residual formatting the hand-write missed.
+
+**Verified during PR review (2026-07-17).** `Cargo.lock` regenerated (the four deps resolved;
+the `tree-sitter 0.22` / `tree-sitter-rust 0.21` pairing compiled without adjustment). Fixed
+during review: two trivial clippy items (`int_plus_one` in `env.rs`; unused `Span`/`Detector`
+imports); two borrowed-temporary compile errors in tests (`let x = &Parser.parse(buf).spans`
+dangles — bound the `ParseResult` first, in `env.rs` and `yaml.rs`); and **one real correctness
+bug** — `yaml::falls_back_to_json_tokenizer_for_flow_style` failed because the block line-scanner
+greedily matched the first `:` in a flow-style line `{"host": ...}` and emitted `{"host"` as a
+bogus "key", so `spans` was never empty and the JSON-tokenizer fallback never fired. Fixed by
+skipping block key-extraction for a segment that opens with a flow indicator (`{`/`[`), leaving
+it to the JSON tokenizer (a line like `config: {host: db}` opens with `config`, so it is
+unaffected). Full chain green after: 36 `vg-parsers` lib tests + 3 cross-crate integration tests
++ the whole existing suite.
+
+### Doubt-driven-development (Codex cross-model, 2026-07-17)
+
+A fresh-context Codex review ran (given the diff + the `Parser` never-panic/span-bounds
+contract, focused on panics, out-of-bounds spans, and false-negative "missed value" spans). It
+ran out of its turn budget before a full verdict, but its final assessment was explicit and
+matches an independent read: **no out-of-bounds / panic risks found** (the hard contract holds —
+backed by the per-module `assert_parser_never_panics` batteries and `every_span_is_within_bounds`
+tests, all green), and the only residual is **partial spanning** — a syntactically valid value
+covered by only part of a span, which *could* let a span-aware detector miss part of a secret.
+
+Reconciled as a **documented, stage-appropriate concern flagged forward to T07**, not a current
+bug: the T03 detectors currently *ignore* the `spans` parameter entirely (the `_spans` no-op,
+asserted and explained in `tests/detector_integration.rs` and the section above), so today every
+detector scans the raw buffer, not the spans — a partial span cannot cause a missed detection
+until T07 wires spans into the pipeline. **Hard note for T07:** when spans start gating what a
+detector scans, partial/underspanning becomes a real false-negative (missed-secret) risk;
+before relying on parser spans to scope detection, add coverage that a value spanning multiple
+tokens/lines (a multi-line string, a wrapped base64 blob, a quoted value with embedded
+delimiters) is fully covered, or have the pipeline fall back to scanning the raw region. The one
+real underspanning bug that *did* exist at this layer (the yaml flow-style mis-parse above) is
+fixed.
+
+### Doubt-driven-development, round 2 (Codex cross-model, complete verdict, 2026-07-17)
+
+A second, tighter Codex critique confirmed **no panic / out-of-bounds-span risks** and named two
+concrete instances of the partial-spanning class above. Both are Medium and, per the `_spans`
+no-op, cannot cause a missed detection until T07 — so both are recorded here as **specific known
+under-spanning limitations for T07 to close**, not fixed now (quote-aware YAML scanning in the
+best-effort line scanner is real parser work with regression risk, and the well-formedness
+gate + JSON fallback already back-stop structure):
+
+1. **A `#` inside a quoted YAML value is treated as a comment.** `password: "abc #def"` yields a
+   Value span over only `"abc` and a Comment span over `#def"`. `comment_start` requires a `#`
+   preceded by whitespace but is not quote-aware. (The `.env` parser deliberately handles the
+   analogous `pass#word` case; YAML's block scanner does not.) A secret containing ` #` would be
+   split. **T07 fix direction:** make comment detection quote-aware, or have the pipeline scan
+   the raw line for a value the parser under-spanned.
+2. **YAML flow scalars that aren't JSON double-quoted strings are under-spanned.** The flow-style
+   fallback reuses the JSON tokenizer, which only recognises `"…"` strings and bare scalars;
+   single-quoted (`{token: 'sk-live-abc'}`) or unquoted flow scalars get no complete span.
+   **T07 fix direction:** a YAML-aware flow tokenizer, or raw-region fallback.
+
+Both are the same "detector could miss part of a value once spans gate detection" risk already
+flagged above — now with concrete reproducers to test against at T07.

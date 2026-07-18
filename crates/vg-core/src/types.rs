@@ -95,6 +95,29 @@ pub struct Finding {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MappingRef(pub Uuid);
 
+/// Binds a display placeholder that `mask` minted (`EMAIL_001`) to the opaque
+/// [`MappingRef`] the vault interned it under.
+///
+/// **Why this exists (contract v1.2, 2026-07-18, Task T09):** demask must locate the
+/// placeholders to reverse **exclusively from the pack's own mappings — never by
+/// pattern-scanning `.text` for placeholder-shaped substrings**. Raw input that already
+/// contains an `EMAIL_001`-shaped string is byte-for-byte indistinguishable from pipeline
+/// output, so a text scan cannot tell "a placeholder we minted" from "a coincidental
+/// look-alike in the user's data". [`MaskedPack::mapping_refs`] alone can't drive
+/// substitution either — a `MappingRef` is an opaque UUID with no display attached.
+/// `mask` holds both the display and the ref at intern time, so it records the pairing
+/// here and [`crate::rehydrate`] substitutes *only* these displays.
+///
+/// Carries only a typed display (`EMAIL_001`) and an opaque UUID — never a raw value — so
+/// it does not widen [`MaskedPack`]'s "no raw value" invariant.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlaceholderBinding {
+    /// The minted display string as it appears in [`MaskedPack::text`] (`EMAIL_001`).
+    pub display: String,
+    /// The vault handle the display resolves through in [`crate::rehydrate`].
+    pub mapping_ref: MappingRef,
+}
+
 /// Counts of findings by `EntityType`, used for audit/mask stats without exposing
 /// values.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -121,6 +144,13 @@ pub struct MaskStats {
 pub struct MaskedPack {
     pub text: String,
     pub mapping_refs: Vec<MappingRef>,
+    /// display → `MappingRef` pairing for every placeholder `mask` minted into `text`
+    /// (contract v1.2 additive field). Retained alongside `mapping_refs` (a subset — just
+    /// the refs, no displays) rather than replacing it, since removing a frozen field
+    /// would be a breaking change; `bindings` is the superset [`crate::rehydrate`] needs
+    /// to reverse the pack without ever scanning `text` for placeholder-shaped strings.
+    /// See [`PlaceholderBinding`].
+    pub bindings: Vec<PlaceholderBinding>,
     pub stats: MaskStats,
     pub policy_version: String,
 }
@@ -135,6 +165,7 @@ mod tests {
         let leaking = MaskedPack {
             text: "contact jane.doe@example.com for details".to_string(),
             mapping_refs: vec![],
+            bindings: vec![],
             stats: MaskStats::default(),
             policy_version: "v1".to_string(),
         };
@@ -152,6 +183,10 @@ mod tests {
         let masked = MaskedPack {
             text: "contact {{EMAIL_1}} for details".to_string(),
             mapping_refs: vec![MappingRef(Uuid::nil())],
+            bindings: vec![PlaceholderBinding {
+                display: "{{EMAIL_1}}".to_string(),
+                mapping_ref: MappingRef(Uuid::nil()),
+            }],
             stats: MaskStats::default(),
             policy_version: "v1".to_string(),
         };

@@ -42,5 +42,5 @@ pub use traits::{
 };
 pub use types::{
     EntityCounts, EntityType, Finding, HandlingClass, MappingRef, MaskStats, MaskedPack, Namespace,
-    NodeKind, Span,
+    NodeKind, PlaceholderBinding, Span,
 };

@@ -560,3 +560,35 @@ agent_runs:
       - "Contract-shape limit documented: Secret is a String (frozen T02), so non-UTF-8 spans cannot round-trip byte-exactly; unreachable with the all-ASCII T03 detectors."
     next_actions:
       - "T09 (vg CLI + Claude Code adapter) is the newly-ready task; T10/T11 after."
+  - id: RUN-0018
+    date: 2026-07-18
+    agent: "opus (headless dispatch, died mid-response, rescued in place) + fable (rescue + fresh-context doubt-pass + fixes) + codex (cross-model round)"
+    role: "Build Agent"
+    intent: "T09: vg CLI + Claude Code hook adapter. Contract v1.2 (MaskedPack.bindings; rehydrate re-signed, hard-deny first, binding-only substitution) and v1.3 (§8 hook protocol corrected to the platform's real exit-code/JSON semantics after the doubt-pass proved the frozen 0/2/1 scheme failed open end-to-end)."
+    autonomy_level: 3
+    approvals:
+      required: true
+      status: pending
+      approver: coderturtle
+    files_touched:
+      - "crates/vg-adapters-claude/src/{hook,pack,runtime,state,wrapper,lib}.rs"
+      - "crates/vg-cli/src/main.rs"
+      - "crates/vg-cli/tests/cli.rs"
+      - "crates/vg-core/src/{api,types,conformance,lib}.rs"
+      - "crates/vg-core/tests/demask.rs"
+      - "crates/vg-vault/src/lib.rs"
+      - "docs/architecture/interface-contracts.md"
+      - "docs/runbook-hooks.md"
+      - "docs/decisions.md"
+      - ".hekton/build-tasks/T09-output.md"
+    links:
+      - "docs/decisions.md"
+      - "docs/session-log.md"
+      - "docs/runbook-hooks.md"
+    validation:
+      - "cargo build && cargo clippy --workspace --all-targets -- -D warnings && cargo fmt --check && cargo test --workspace: PASS -- 218 tests across 28 binaries, 0 failures, in the T09 worktree"
+    risks:
+      - "Doubt-driven-development, two rounds + addendum. Fable round 1: 18 findings, 6 High -- keystone was the inverted §8 exit-code contract (exit 1 is NON-blocking on the real platform: every fail-closed path failed open; exit-2 stdout is discarded: transforms never substituted). Fixed as v1.3 (exit-0 JSON updatedInput/updatedToolOutput; prompts block-with-masked-resubmit; exit 2 = block). Codex round 2: 7 findings -- the High was the fail-open seam AROUND the round-1 fix (errors bubbling out of the hook command exited 1); fixed at the process boundary with a regression test. Addendum: round-2's hard-deny-before-open had silently un-audited CLI denials; corrected so refusal never depends on the engine but is audited whenever the engine opens."
+      - "Documented Phase-1 trade-offs routed to T10/T11: ancestor state-dir trust; demask is attribution not authentication (wrapped agent can demask); pack plaintext accumulation (self-gitignore mitigates commits; TTL/purge pending); exact display-collision residual (collision-avoiding minting candidate); Bash .env-write bypasses artefact Block (no file_path hint)."
+    next_actions:
+      - "Human tollgate (gateway-review.sh --task T09; ledger repaired failed -> interrupted), then land, then the human UX-invisibility session per docs/runbook-hooks.md; T10 eval harness next."

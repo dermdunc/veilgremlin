@@ -1013,3 +1013,43 @@ T07-era fix for the 2026-07-16 entropy/phone false positives.
 ### Mind-palace updated
 
 - No (vault mutation not authorised; repo-local docs updated).
+
+## Session: T09 — `vg` CLI + Claude Code adapter; contract v1.2 + v1.3; two doubt rounds
+
+**Date:** 2026-07-18
+
+### What happened
+
+- Dispatched T09 under Opus from clean main (worktree `run-20260718-T09`). The dispatch
+  died mid-response (`API Error: Connection closed mid-response` — failure mode #4);
+  rescued in place per the T02 precedent: Opus's adapter crate (1,254 lines, compiled
+  clean) kept, the missing CLI/tests/runbook written by the rescue session.
+- Contract v1.2 via protocol: `MaskedPack.bindings` (additive) + `rehydrate` re-signed;
+  demask resolves exclusively via pack-minted bindings (T07 banked requirement).
+- **Doubt round 1 (Fable, fresh context): 18 findings, 6 High.** Keystone: §8's frozen
+  exit-code scheme was inverted vs the real platform — every fail-closed path failed
+  open, and the transform path never substituted anything. Verified against the hooks
+  docs; fixed as **contract v1.3** (transform = exit 0 + JSON `updatedInput` /
+  `updatedToolOutput` / prompt `decision:block` with masked resubmit; block = exit 2).
+  11 further findings fixed (quoting, schema drift, denial-only demask audit,
+  boundary-aware substitution, partial-restore signal, audit hygiene, busy timeout,
+  `--settings=`, schema `!=`, state-dir self-gitignore, key-env warning); 4 documented
+  trade-offs routed to T10/T11; keyring CI-fix revert (stale worktree base) neutralised.
+- **Doubt round 2 (Codex, cross-model): 7 findings.** Real catch: hook-path errors that
+  bubbled *out* of `run_hook` exited 1 = non-blocking = fail-open — now exit 2 + test.
+  Hard-deny no longer consults even `version()` pre-decision; `same_shape` guard on
+  masked tool payloads; count-based partial-restore detection. One addendum: the
+  round-2 hard-deny fix had silently un-audited CLI denials — caught by the demo-plan
+  critique, corrected same day.
+- Ledger repaired `failed` → `interrupted` (reviewable, accurate); RISK-0017 placeholder
+  + real output doc written.
+
+### Validation
+
+Full workspace: build, `clippy -D warnings`, `fmt`, **218 tests / 28 binaries /
+0 failures**. Live smoke: round trip byte-perfect; hard-deny DENIED + audited; `.env`
+write blocked exit 2.
+
+### Mind-palace updated
+
+- No (vault mutation not authorised; repo-local docs updated).

@@ -24,11 +24,12 @@ use crate::audit::AuditEvent;
 use crate::error::{MaskError, RehydrateDenied};
 use crate::ids::ActorId;
 use crate::traits::{
-    ArtefactHint, ArtefactKind, AuditSink, Detector, Parser, PolicyEngine, Secret, VaultStore,
+    ArtefactHint, ArtefactKind, AuditSink, Detector, Parser, Placeholder, PolicyEngine, Secret,
+    VaultStore,
 };
 use crate::types::{
     EntityCounts, EntityType, Finding, HandlingClass, MappingRef, MaskStats, MaskedPack, Namespace,
-    Span,
+    PlaceholderBinding, Span,
 };
 
 /// Raw bytes plus whatever hint the caller already has about their shape.
@@ -83,8 +84,10 @@ impl Destination {
 
     /// True for destinations `rehydrate` denies regardless of actor or `PolicyEngine`
     /// impl — the "hard-deny... regardless of actor" invariant from
-    /// `interface-contracts.md` §2.
-    fn is_hard_deny(&self) -> bool {
+    /// `interface-contracts.md` §2. Public so callers (the `vg demask` CLI) can refuse a
+    /// hard-deny destination *before* opening the vault/policy at all — the contract says
+    /// the refusal must not depend on either being reachable (Codex round-2 finding).
+    pub fn is_hard_deny(&self) -> bool {
         matches!(
             self,
             Destination::RemoteModelPrompt | Destination::ObservabilitySink
@@ -175,6 +178,7 @@ pub fn mask(
         let pack = MaskedPack {
             text: String::new(),
             mapping_refs: Vec::new(),
+            bindings: Vec::new(),
             stats: MaskStats {
                 counts: EntityCounts::default(),
                 blocked_artefacts: 1,
@@ -232,6 +236,10 @@ pub fn mask(
     let ordered = resolve_overlaps(findings);
 
     let mut mapping_refs: Vec<MappingRef> = Vec::new();
+    // display → MappingRef for every placeholder minted (contract v1.2). Deduped in lockstep
+    // with `mapping_refs`: a value seen N times interns to one placeholder and is recorded
+    // once, so `rehydrate` has exactly one binding per distinct minted display.
+    let mut bindings: Vec<PlaceholderBinding> = Vec::new();
     let mut handled_counts: BTreeMap<EntityType, usize> = BTreeMap::new();
     let mut replacements: Vec<(Span, String)> = Vec::new();
 
@@ -255,9 +263,15 @@ pub fn mask(
                 match policy.vault.intern(&Secret::new(value), ty.clone(), ns) {
                     Ok(placeholder) => {
                         // Dedup (doubt-pass finding): a value seen N times returns the
-                        // same MappingRef N times; the pack lists each mapping once.
+                        // same MappingRef N times; the pack lists each mapping once. The
+                        // display↔ref binding is recorded in the same guard so `bindings`
+                        // stays 1:1 with `mapping_refs` (contract v1.2).
                         if !mapping_refs.contains(&placeholder.mapping_ref) {
                             mapping_refs.push(placeholder.mapping_ref);
+                            bindings.push(PlaceholderBinding {
+                                display: placeholder.display.clone(),
+                                mapping_ref: placeholder.mapping_ref,
+                            });
                         }
                         Some(placeholder.display)
                     }
@@ -312,6 +326,7 @@ pub fn mask(
     let pack = MaskedPack {
         text,
         mapping_refs: mapping_refs.clone(),
+        bindings,
         stats: MaskStats {
             counts: EntityCounts(handled_counts),
             blocked_artefacts: 0,
@@ -446,28 +461,160 @@ fn detector_version(ctx: &Context) -> String {
     ids.join("+")
 }
 
-/// Reverses a masked placeholder back to its raw value for an authorised, local
-/// destination.
+/// Reverses the placeholders in a [`MaskedPack`] back to their raw values, for an
+/// authorised, local destination.
 ///
-/// The destination hard-deny gate below does not depend on any Wave B crate, so it is
-/// implemented for real here rather than deferred: `RemoteModelPrompt` and
-/// `ObservabilitySink` are denied unconditionally, before any `PolicyEngine` or
-/// `VaultStore` is even consulted. Resolving an *allowed* destination still needs a
-/// wired `VaultStore` + `PolicyEngine`, so that half is deferred to Task T07/T09.
+/// **Contract v1.2 (2026-07-18, Task T09) — re-signed from `rehydrate(masked: &str, dest,
+/// actor)`.** The frozen v1 signature took bare masked text and no vault handle, which
+/// could not satisfy two hard requirements at once: (1) resolving needs a wired
+/// `VaultStore`/`PolicyEngine` (the pack + `Policy` now supply them), and (2) the T07
+/// review banked that demask must resolve **exclusively via the pack's own
+/// [`PlaceholderBinding`]s — never by pattern-scanning text for placeholder-shaped
+/// strings** (input already containing `EMAIL_001`-shaped text is indistinguishable from
+/// pipeline output, so a text scan cannot tell a minted placeholder from a look-alike).
+/// The pack carries the display↔ref pairing `mask` recorded at intern time; this function
+/// substitutes only those displays. See `interface-contracts.md` §2 (v1.2) and
+/// `docs/decisions.md`'s 2026-07-18 T09 entry.
+///
+/// Decision order (the hard-deny gate stays **first**, before any vault/policy
+/// consultation, exactly as the frozen v1 body had it):
+/// 1. **Hard-deny destinations** (`RemoteModelPrompt`, `ObservabilitySink`) are denied
+///    unconditionally — regardless of actor, policy pack, or whether the vault is even
+///    reachable.
+/// 2. **`policy.engine.demask_allowed(dest, actor)`** — the configurable policy gate.
+/// 3. **Per-ref `policy.vault.resolve`** for each binding, under `ns`, substituting only
+///    the displays the pack itself minted.
+///
+/// **Inherent residual, recorded not hidden:** substitution is by exact display string, so
+/// raw text that happens to equal a display the pack *did* mint (e.g. the user's prompt
+/// literally contained `EMAIL_001` and the pack also minted `EMAIL_001` for a real address)
+/// is substituted too. This is the nature of in-band text masking — a display and a
+/// coincidental look-alike are the same bytes — and is strictly narrower than the scan-the-
+/// text approach this design rejects: only displays the pack *actually minted* can ever be
+/// touched, never an arbitrary placeholder-shaped string. A spoofed `EMAIL_999` that the
+/// pack never minted has no binding and is left untouched.
+///
+/// A binding whose value cannot be resolved under `ns` (expired, purged, or a namespace
+/// mismatch — all reported by the vault as `NotFound`) is left as its placeholder rather
+/// than failing the whole demask: `RehydrateDenied` is an authorisation outcome, not a
+/// per-value resolution one.
 pub fn rehydrate(
-    masked: &str,
+    pack: &MaskedPack,
+    policy: &Policy,
+    ns: &Namespace,
     dest: Destination,
     actor: &Actor,
 ) -> Result<String, RehydrateDenied> {
+    // 1. Hard-deny FIRST — decided before consulting the policy engine or the vault at
+    //    all (Codex round-2: even the `version()` fetch counted as a consult, so it now
+    //    happens only inside the post-decision audit write).
     if dest.is_hard_deny() {
+        write_demask_decision(policy, &dest, actor, false);
         return Err(RehydrateDenied {
             destination: dest,
             actor: actor.id.clone(),
             reason: "destination is hard-deny in default policy".to_string(),
         });
     }
-    let _ = masked;
-    todo!("vault/policy-authorised resolution wired in Task T07/T09 (vg-cli demask gate)")
+
+    // 2. Configurable policy gate.
+    if !policy.engine.demask_allowed(dest.clone(), actor) {
+        write_demask_decision(policy, &dest, actor, false);
+        return Err(RehydrateDenied {
+            destination: dest,
+            actor: actor.id.clone(),
+            reason: "policy denies demask to this destination for this actor".to_string(),
+        });
+    }
+
+    // No `allowed: true` event here (doubt-pass reconciliation): the vault fail-closed-logs
+    // every per-ref `resolve` attempt in its own append-only demask log, so an authorised
+    // demask is already attributed there. Only *denials* never reach the vault — they are
+    // what this event exists to record.
+
+    // 3. Resolve each binding once under `ns`, then substitute in a single left-to-right
+    //    pass over the pack text (doubt-pass fixes — the original per-binding
+    //    `String::replace` loop had two defects this pass removes):
+    //    - **Token boundaries**: `replace` matches substrings, so a minted `EMAIL_001`
+    //      would corrupt unrelated text `EMAIL_0015`. A match here must not touch an
+    //      alphanumeric/underscore on either side. Longest-display-first at each position
+    //      keeps `EMAIL_1` from shadowing `EMAIL_10` (post-999 ordinals).
+    //    - **No re-scanning restored values**: output is appended, never re-scanned, so a
+    //      restored secret that itself contains a display-shaped string is left intact.
+    let resolved: Vec<(&str, Option<Secret>)> = {
+        let mut v: Vec<_> = pack
+            .bindings
+            .iter()
+            .map(|b| {
+                let placeholder = Placeholder {
+                    display: b.display.clone(),
+                    mapping_ref: b.mapping_ref,
+                };
+                (
+                    b.display.as_str(),
+                    policy.vault.resolve(&placeholder, ns).ok(),
+                )
+            })
+            .collect();
+        v.sort_by_key(|(d, _)| std::cmp::Reverse(d.len()));
+        v
+    };
+
+    let src = pack.text.as_str();
+    let mut out = String::with_capacity(src.len());
+    let mut i = 0;
+    while i < src.len() {
+        let matched = resolved.iter().find(|(display, _)| {
+            !display.is_empty()
+                && src[i..].starts_with(display)
+                && boundary_ok(src, i, i + display.len())
+        });
+        match matched {
+            Some((display, Some(secret))) => {
+                out.push_str(secret.expose_secret());
+                i += display.len();
+            }
+            // Unresolvable binding (expired/purged/namespace mismatch): leave its
+            // placeholder in place rather than failing the whole demask.
+            Some((display, None)) => {
+                out.push_str(display);
+                i += display.len();
+            }
+            None => {
+                let ch = src[i..].chars().next().expect("in-bounds char");
+                out.push(ch);
+                i += ch.len_utf8();
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// True when the byte range `[start, end)` sits on token boundaries: the characters just
+/// before and after are absent or not `[A-Za-z0-9_]`. Displays are `TYPE_TAG_NNN` tokens;
+/// a display glued to more word characters is part of some longer string, not a minted
+/// placeholder occurrence.
+fn boundary_ok(text: &str, start: usize, end: usize) -> bool {
+    let is_word = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    let before_ok = !text[..start].chars().next_back().is_some_and(is_word);
+    let after_ok = !text[end..].chars().next().is_some_and(is_word);
+    before_ok && after_ok
+}
+
+/// Best-effort audit of a demask *denial* (the only authorisation outcome the vault cannot
+/// see — hard-deny and policy-deny return before any `resolve`). The write's own error is
+/// dropped: the caller is already returning `RehydrateDenied`, so a failed audit write
+/// cannot turn a denial into anything less safe. Successful demasks are attributed by the
+/// vault's own fail-closed per-`resolve` demask log, not duplicated here.
+fn write_demask_decision(policy: &Policy, dest: &Destination, actor: &Actor, allowed: bool) {
+    // The version fetch lives here, after the decision, so the hard-deny gate itself
+    // never consults the policy engine.
+    let _ = policy.audit.write(AuditEvent::DemaskDecision {
+        dest: dest.clone(),
+        actor: actor.id.clone(),
+        allowed,
+        policy_version: policy.engine.version().to_string(),
+    });
 }
 
 /// Runs `corpus` through the pipeline and reports Go/No-Go metrics. Wired in Task T10.
@@ -480,42 +627,10 @@ pub fn benchmark(corpus: &Corpus, policy: &Policy) -> Metrics {
 mod tests {
     use super::*;
 
-    fn actor(id: &str) -> Actor {
-        Actor {
-            id: ActorId(id.to_string()),
-            roles: vec!["admin".to_string()],
-        }
-    }
-
-    #[test]
-    fn rehydrate_denies_remote_model_prompt_regardless_of_actor() {
-        let err = rehydrate(
-            "{{EMAIL_1}}",
-            Destination::RemoteModelPrompt,
-            &actor("admin-1"),
-        )
-        .expect_err("RemoteModelPrompt must be hard-denied even for an admin actor");
-        assert_eq!(err.destination, Destination::RemoteModelPrompt);
-    }
-
-    #[test]
-    fn rehydrate_denies_observability_sink_regardless_of_actor() {
-        let err = rehydrate(
-            "{{EMAIL_1}}",
-            Destination::ObservabilitySink,
-            &actor("admin-1"),
-        )
-        .expect_err("ObservabilitySink must be hard-denied even for an admin actor");
-        assert_eq!(err.destination, Destination::ObservabilitySink);
-    }
-
-    #[test]
-    #[should_panic(expected = "wired in Task T07/T09")]
-    fn rehydrate_allowed_destination_is_not_yet_wired() {
-        // Documents current state rather than asserting a real resolution: the
-        // vault/policy-authorised path is out of scope for T02 and lands in T07/T09.
-        let _ = rehydrate("{{EMAIL_1}}", Destination::LocalPatch, &actor("admin-1"));
-    }
+    // `rehydrate`'s hard-deny gate and its pack-driven substitution both need a real
+    // `Policy` (engine + vault + audit) now that it is wired (contract v1.2), so those
+    // assertions live in `tests/demask.rs`, which composes the real Wave B crates as
+    // `tests/pipeline.rs` does. Only the pure, dependency-free checks stay here.
 
     #[test]
     fn destination_id_is_stable_for_policy_lookups() {
@@ -523,5 +638,14 @@ mod tests {
             Destination::RemoteModelPrompt.id(),
             DestinationId("remote-model-prompt".to_string())
         );
+    }
+
+    #[test]
+    fn hard_deny_destinations_are_recognised() {
+        assert!(Destination::RemoteModelPrompt.is_hard_deny());
+        assert!(Destination::ObservabilitySink.is_hard_deny());
+        assert!(!Destination::LocalPatch.is_hard_deny());
+        assert!(!Destination::LocalTestFixture.is_hard_deny());
+        assert!(!Destination::LocalExplanationBuffer.is_hard_deny());
     }
 }

@@ -18,7 +18,20 @@ vg-core = { workspace = true }
 rusqlite = { version = "0.31", features = ["bundled-sqlcipher-vendored-openssl"] }
 # OS keychain wrap for the DB encryption key (macOS Keychain via Security framework),
 # never persisting the key in plaintext on disk.
-keyring = "2"
+#
+# Backends narrowed 2026-07-18 (CI fix, see docs/decisions.md): the default
+# `platform-all` pulls the Linux *Secret Service* backend (`secret-service` -> `zbus v3`),
+# whose tree carries two RUSTSEC-unmaintained crates (`derivative` RUSTSEC-2024-0388,
+# `instant` RUSTSEC-2024-0384) that fail `cargo-deny check advisories` — red on CI since
+# the T05 merge, invisible to local macOS verify because the deps are Linux-target-only.
+# We keep macOS (Security framework — the spec's "macOS first"), Windows, and Linux via
+# kernel keyutils (no D-Bus, no zbus), which removes the unmaintained crates from the
+# graph entirely rather than ignoring the advisories.
+keyring = { version = "2", default-features = false, features = [
+    "platform-macos",
+    "platform-windows",
+    "linux-default-keyutils",
+] }
 uuid = { version = "1", features = ["v4"] }
 getrandom = "0.2"
 

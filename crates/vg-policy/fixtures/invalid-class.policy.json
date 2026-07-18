@@ -1,0 +1,8 @@
+{
+  "version": "invalid-class-v1",
+  "entities": {
+    "overrides": {
+      "email": "encrypt-somehow"
+    }
+  }
+}

@@ -11,3 +11,10 @@ workspace = true
 
 [dependencies]
 vg-core = { workspace = true }
+# Policy packs are serde-deserialised config. JSON (via serde_json) is used rather than
+# TOML/YAML deliberately — see docs/decisions.md (2026-07-17): both serde + serde_json are
+# already resolved in the workspace Cargo.lock, so this keeps `cargo build --locked` green
+# without fetching a new registry crate. The schema is format-agnostic serde structs, so
+# swapping the format crate (e.g. to `toml`) in a later phase touches only `read_layer`.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

@@ -305,3 +305,27 @@ Full record in repo `docs/decisions.md`'s 2026-07-17 T05b entry.
 
 - Not compiled or tested in-session (toolchain permission-blocked); self-review caught
   three would-be compile errors before handoff.
+
+## Session: T06 (`vg-policy`) built under Opus, reviewed, landed
+
+**Date:** 2026-07-17
+
+### What Changed
+
+Dispatched T06 (policy engine) concurrently under Opus. Implemented `PolicyEngine` with
+3-layer resolution (session > repo > global), a signed-pack verification stub, and the
+security-load-bearing hard-deny: `demask_allowed` returns false for
+`RemoteModelPrompt`/`ObservabilitySink` via a direct enum check *before* any pack rule, so
+no pack can override it. Chose `serde_json` (already in the lockfile) to keep `--locked`
+green with no new dependency.
+
+### Decisions
+
+Full record in repo `docs/decisions.md`'s 2026-07-17 T06 entry. Two Codex critique rounds:
+round 1 verified hard-deny unbypassability + layering fail-safety and prompted documenting
+the `artefact_default = Pass` asymmetry (correct, flagged for T07); round 2 returned "no
+issues found" — the only Wave B task whose complete second-round critique surfaced nothing.
+
+### Next Actions
+
+- [ ] T08 to land next (base-drift recovery, same as T05b/T06).

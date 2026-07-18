@@ -1,0 +1,268 @@
+$ cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check && cargo test
+(cwd: /Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06)
+
+--- stdout ---
+Diff in /Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-policy/src/config.rs:200:
+ ) -> Result<BTreeMap<String, HandlingClass>, PolicyError> {
+     raw.into_iter()
+         .map(|(k, v)| {
+[31m-            let key = if lower_keys { k.to_ascii_lowercase() } else { k };
+(B[m[32m+            let key = if lower_keys {
+(B[m[32m+                k.to_ascii_lowercase()
+(B[m[32m+            } else {
+(B[m[32m+                k
+(B[m[32m+            };
+(B[m             Ok((key, parse_class(&v)?))
+         })
+         .collect()
+Diff in /Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-policy/src/config.rs:293:
+         assert_eq!(merged.entities.default.as_deref(), Some("mask"));
+         // email overridden by over; hostname (base-only) kept.
+         let overrides = &merged.entities.overrides;
+[31m-        assert_eq!(overrides.get("email"), Some(&"irreversible-redact".to_string()));
+(B[m[32m+        assert_eq!(
+(B[m[32m+            overrides.get("email"),
+(B[m[32m+            Some(&"irreversible-redact".to_string())
+(B[m[32m+        );
+(B[m         assert_eq!(overrides.get("hostname"), Some(&"pass".to_string()));
+     }
+ 
+Diff in /Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-policy/src/config.rs:332:
+             ..RawPack::default()
+         };
+         let err = ResolvedPolicy::from_raw(raw).expect_err("bad class must fail resolution");
+[31m-        assert!(matches!(err, PolicyError::Load(_)), "expected Load error, got {err:?}");
+(B[m[32m+        assert!(
+(B[m[32m+            matches!(err, PolicyError::Load(_)),
+(B[m[32m+            "expected Load error, got {err:?}"
+(B[m[32m+        );
+(B[m     }
+ 
+     #[test]
+Diff in /Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-policy/src/engine.rs:109:
+         // destinations are hard-denied *in code*, before consulting the pack — a malicious
+         // or misconfigured pack that sets `demask_allowed = true` for them cannot override
+         // this. Every other destination is pure configuration plumbing below.
+[31m-        if matches!(dest, Destination::RemoteModelPrompt | Destination::ObservabilitySink) {
+(B[m[32m+        if matches!(
+(B[m[32m+            dest,
+(B[m[32m+            Destination::RemoteModelPrompt | Destination::ObservabilitySink
+(B[m[32m+        ) {
+(B[m             return false;
+         }
+ 
+Diff in /Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-policy/tests/policy.rs:36:
+     .expect("global fixture must load");
+ 
+     assert_eq!(engine.version(), "veilgremlin-global-v1");
+[31m-    assert_eq!(engine.classify_entity(EntityType::Email), HandlingClass::Mask);
+(B[m[31m-    assert_eq!(engine.classify_entity(EntityType::Password), HandlingClass::IrreversibleRedact);
+(B[m[31m-    assert_eq!(engine.classify_entity(EntityType::Hostname), HandlingClass::Pass);
+(B[m[32m+    assert_eq!(
+(B[m[32m+        engine.classify_entity(EntityType::Email),
+(B[m[32m+        HandlingClass::Mask
+(B[m[32m+    );
+(B[m[32m+    assert_eq!(
+(B[m[32m+        engine.classify_entity(EntityType::Password),
+(B[m[32m+        HandlingClass::IrreversibleRedact
+(B[m[32m+    );
+(B[m[32m+    assert_eq!(
+(B[m[32m+        engine.classify_entity(EntityType::Hostname),
+(B[m[32m+        HandlingClass::Pass
+(B[m[32m+    );
+(B[m     // Not named anywhere -> the pack's `default` (mask).
+[31m-    assert_eq!(engine.classify_entity(EntityType::Iban), HandlingClass::Mask);
+(B[m[32m+    assert_eq!(
+(B[m[32m+        engine.classify_entity(EntityType::Iban),
+(B[m[32m+        HandlingClass::Mask
+(B[m[32m+    );
+(B[m }
+ 
+ /// All three layers present with overlapping keys: session overrides repo overrides
+Diff in /Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-policy/tests/policy.rs:58:
+     assert_eq!(engine.version(), "veilgremlin-session-v1");
+ 
+     // email: global=mask, session=irreversible-redact -> session wins.
+[31m-    assert_eq!(engine.classify_entity(EntityType::Email), HandlingClass::IrreversibleRedact);
+(B[m[32m+    assert_eq!(
+(B[m[32m+        engine.classify_entity(EntityType::Email),
+(B[m[32m+        HandlingClass::IrreversibleRedact
+(B[m[32m+    );
+(B[m     // person: global=mask, session=block -> session wins.
+[31m-    assert_eq!(engine.classify_entity(EntityType::Person), HandlingClass::Block);
+(B[m[32m+    assert_eq!(
+(B[m[32m+        engine.classify_entity(EntityType::Person),
+(B[m[32m+        HandlingClass::Block
+(B[m[32m+    );
+(B[m     // hostname: global=pass, repo=irreversible-redact, session silent -> repo wins over global.
+[31m-    assert_eq!(engine.classify_entity(EntityType::Hostname), HandlingClass::IrreversibleRedact);
+(B[m[32m+    assert_eq!(
+(B[m[32m+        engine.classify_entity(EntityType::Hostname),
+(B[m[32m+        HandlingClass::IrreversibleRedact
+(B[m[32m+    );
+(B[m     // customer-id: only repo names it.
+[31m-    assert_eq!(engine.classify_entity(EntityType::CustomerId), HandlingClass::Mask);
+(B[m[32m+    assert_eq!(
+(B[m[32m+        engine.classify_entity(EntityType::CustomerId),
+(B[m[32m+        HandlingClass::Mask
+(B[m[32m+    );
+(B[m     // phone: named by no layer -> global default (mask).
+[31m-    assert_eq!(engine.classify_entity(EntityType::Phone), HandlingClass::Mask);
+(B[m[32m+    assert_eq!(
+(B[m[32m+        engine.classify_entity(EntityType::Phone),
+(B[m[32m+        HandlingClass::Mask
+(B[m[32m+    );
+(B[m 
+     // artefact rules come only from global here and still apply after merge.
+     // Extension match is case-insensitive: `.ENV` resolves via the `env` rule.
+Diff in /Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-policy/tests/policy.rs:165:
+         session: None,
+     })
+     .expect_err("a missing global layer must fail to load");
+[31m-    assert!(matches!(err, PolicyError::Load(_)), "expected Load, got {err:?}");
+(B[m[32m+    assert!(
+(B[m[32m+        matches!(err, PolicyError::Load(_)),
+(B[m[32m+        "expected Load, got {err:?}"
+(B[m[32m+    );
+(B[m }
+ 
+ #[test]
+Diff in /Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-policy/tests/policy.rs:176:
+         session: None,
+     })
+     .expect_err("an unknown handling class must fail to load");
+[31m-    assert!(matches!(err, PolicyError::Load(_)), "expected Load, got {err:?}");
+(B[m[32m+    assert!(
+(B[m[32m+        matches!(err, PolicyError::Load(_)),
+(B[m[32m+        "expected Load, got {err:?}"
+(B[m[32m+    );
+(B[m }
+ 
+ #[test]
+Diff in /Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-policy/tests/policy.rs:187:
+         session: None,
+     })
+     .expect_err("malformed JSON must fail to load");
+[31m-    assert!(matches!(err, PolicyError::Load(_)), "expected Load, got {err:?}");
+(B[m[32m+    assert!(
+(B[m[32m+        matches!(err, PolicyError::Load(_)),
+(B[m[32m+        "expected Load, got {err:?}"
+(B[m[32m+    );
+(B[m }
+ 
+
+--- stderr ---
+   Compiling version_check v0.9.5
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.46
+   Compiling unicode-ident v1.0.24
+   Compiling typenum v1.20.1
+   Compiling libc v0.2.186
+   Compiling subtle v2.6.1
+   Compiling cfg-if v1.0.4
+   Compiling getrandom v0.4.3
+   Compiling thiserror v1.0.69
+   Compiling zeroize v1.9.0
+   Compiling memchr v2.8.3
+   Compiling serde_core v1.0.228
+   Compiling zmij v1.0.23
+   Compiling generic-array v0.14.7
+   Compiling aho-corasick v1.1.4
+   Compiling serde_json v1.0.150
+   Compiling serde v1.0.228
+   Compiling regex-syntax v0.8.11
+   Compiling cpufeatures v0.2.17
+   Compiling itoa v1.0.18
+   Compiling regex-automata v0.4.15
+   Compiling uuid v1.23.5
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling digest v0.10.7
+   Compiling regex v1.13.0
+   Compiling hmac v0.12.1
+   Compiling sha2 v0.10.9
+   Compiling syn v2.0.118
+   Compiling thiserror-impl v1.0.69
+   Compiling serde_derive v1.0.228
+   Compiling vg-core v0.1.0 (/Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-core)
+   Compiling vg-adapters-claude v0.1.0 (/Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-adapters-claude)
+   Compiling vg-detectors v0.1.0 (/Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-detectors)
+   Compiling vg-audit v0.1.0 (/Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-audit)
+   Compiling vg-bench v0.1.0 (/Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-bench)
+   Compiling vg-vault v0.1.0 (/Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-vault)
+   Compiling vg-parsers v0.1.0 (/Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-parsers)
+   Compiling vg-cli v0.1.0 (/Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-cli)
+   Compiling vg-policy v0.1.0 (/Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-policy)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.52s
+   Compiling libc v0.2.186
+    Checking cfg-if v1.0.4
+    Checking typenum v1.20.1
+    Checking subtle v2.6.1
+    Checking zeroize v1.9.0
+    Checking memchr v2.8.3
+   Compiling serde_core v1.0.228
+   Compiling syn v2.0.118
+   Compiling serde v1.0.228
+    Checking regex-syntax v0.8.11
+   Compiling crossbeam-utils v0.8.22
+    Checking zmij v1.0.23
+   Compiling crossbeam-epoch v0.9.20
+    Checking aho-corasick v1.1.4
+    Checking itoa v1.0.18
+   Compiling zerocopy v0.8.54
+    Checking generic-array v0.14.7
+   Compiling autocfg v1.5.1
+   Compiling crossbeam-deque v0.8.7
+   Compiling num-traits v0.2.19
+    Checking crypto-common v0.1.7
+    Checking block-buffer v0.10.4
+    Checking digest v0.10.7
+    Checking either v1.16.0
+    Checking hmac v0.12.1
+    Checking regex-automata v0.4.15
+   Compiling rayon-core v1.13.0
+    Checking ciborium-io v0.2.2
+    Checking clap_lex v1.1.0
+    Checking plotters-backend v0.3.7
+    Checking anstyle v1.0.14
+    Checking clap_builder v4.6.0
+    Checking cpufeatures v0.2.17
+    Checking getrandom v0.4.3
+    Checking sha2 v0.10.9
+    Checking uuid v1.23.5
+    Checking serde_json v1.0.150
+    Checking regex v1.13.0
+    Checking plotters-svg v0.3.7
+   Compiling thiserror-impl v1.0.69
+   Compiling serde_derive v1.0.228
+   Compiling zerocopy-derive v0.8.54
+    Checking itertools v0.10.5
+    Checking same-file v1.0.6
+    Checking cast v0.3.0
+    Checking walkdir v2.5.0
+    Checking clap v4.6.1
+    Checking is-terminal v0.4.17
+    Checking oorandom v11.1.5
+    Checking once_cell v1.21.4
+    Checking anes v0.1.6
+    Checking thiserror v1.0.69
+    Checking criterion-plot v0.5.0
+    Checking plotters v0.3.7
+    Checking rayon v1.12.0
+    Checking vg-core v0.1.0 (/Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-core)
+    Checking vg-detectors v0.1.0 (/Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-detectors)
+    Checking vg-adapters-claude v0.1.0 (/Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-adapters-claude)
+    Checking vg-bench v0.1.0 (/Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-bench)
+    Checking vg-parsers v0.1.0 (/Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-parsers)
+    Checking vg-vault v0.1.0 (/Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-vault)
+    Checking vg-audit v0.1.0 (/Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-audit)
+    Checking vg-cli v0.1.0 (/Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-cli)
+    Checking tinytemplate v1.2.1
+    Checking vg-policy v0.1.0 (/Users/hekton/Development/hekton/labs/engine-gateway-lab/.worktrees/run-20260717-T06/crates/vg-policy)
+    Checking half v2.7.1
+    Checking ciborium-ll v0.2.2
+    Checking ciborium v0.2.2
+    Checking criterion v0.5.1
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.57s
+
+exit code: 1

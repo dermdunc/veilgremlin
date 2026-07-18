@@ -1191,3 +1191,114 @@ one real bug that round 1's fixes had actually *introduced*:
   durably-committed record for this sink, so discarding it is honest, and now index and disk
   agree. New regression test `a_valid_record_without_a_trailing_newline_is_not_indexed_then_lost`.
   Full chain green after: 13 sink tests + 3 record tests + the existing suite.
+
+## 2026-07-17 - T06: `vg-policy` PolicyEngine implemented (`LayeredPolicyEngine`)
+
+### Context
+
+Implemented `vg_core::PolicyEngine` in `crates/vg-policy` (previously an empty stub). The
+engine resolves up to three layered policy packs (session-over-repo-over-global) into one
+validated policy and answers the six trait methods. See `crates/vg-policy/src/{config,engine}.rs`
+and the fixtures/tests. Decisions taken during the task (recorded here rather than asked, per
+the one-shot headless dispatch instruction):
+
+### Decision — policy-pack format is **JSON** in Phase 1, not TOML/YAML (deviates from ADR-007)
+
+ADR-007 (2026-06-30) said "native YAML/TOML now". The T06 spec restated that as "YAML
+(`serde_yaml`) or TOML (`toml`) are both reasonable". I chose **JSON via `serde_json`** instead,
+for one concrete, environment-driven reason: **cargo cannot run in this dispatch sandbox**, so
+`Cargo.lock` cannot be regenerated. `serde`, `serde_core`, `serde_derive`, and `serde_json` are
+*already fully resolved* in the workspace `Cargo.lock` (pulled in transitively by `criterion`),
+whereas neither `toml` nor `serde_yaml` is present. Adding `toml`/`serde_yaml` would introduce
+new registry packages (winnow, serde_spanned, toml_edit, indexmap, …) that I cannot resolve or
+checksum by hand, which would break the `cargo build --locked` acceptance criterion. JSON adds
+**zero** new locked packages — the only `Cargo.lock` change is adding the `serde`/`serde_json`
+edges to `vg-policy`'s own dependency list.
+
+This is a deliberate, reversible, Phase-1-scoped deviation, not a rejection of ADR-007. The
+on-disk schema is format-agnostic serde structs (`RawPack` etc.), so switching the format crate
+(e.g. to `toml`) is a one-line change in `LayeredPolicyEngine::read_layer` plus renaming the
+fixtures — no schema or engine-logic change. **Follow-up (see next-actions):** when the build
+environment can regenerate the lock, reconcile format with ADR-007 (TOML) or amend ADR-007 to
+accept JSON. Neither `serde_yaml` (unmaintained/deprecated upstream) nor a hand-rolled parser
+was considered a good option.
+
+### Decision — the hard-deny rule is enforced *in code*, above the config layer
+
+`demask_allowed` returns `false` for `Destination::RemoteModelPrompt` and
+`Destination::ObservabilitySink` via an explicit `matches!` guard *before* the pack is consulted
+— a malicious or misconfigured pack that sets `demask_allowed: true` for them cannot override it
+(regression-tested in `malicious_pack_cannot_unlock_hard_deny_destinations`). This is the one
+security-load-bearing part of the task; everything else is configuration plumbing. Verified with
+`vg_core::conformance::assert_policy_engine_denies_hard_deny_destinations`. As defence in depth,
+`destination_allows_masked_only` also forces `true` for those two destinations regardless of
+pack contents (the send-side mirror of the same invariant — the contract only mandates the
+`demask_allowed` half, this strengthens it at no cost).
+
+### Decision — signed-pack verification is a clearly-marked always-accept stub
+
+`config::verify_signature` returns `Ok(())` unconditionally in Phase 1 (interface-contracts.md
+§6: "stub in Phase 1, enforced later"). The `signature` field is threaded through `RawPack` now
+so Phase 2 can add real verification without a load-flow or schema change. Marked **PHASE 1
+STUB — must be replaced before loading untrusted packs** in the doc comment.
+
+### Smaller decisions (schema/semantics)
+
+- **Entity/handling-class keys are stable kebab-case strings** (`config::entity_key`,
+  `parse_class`) since `EntityType`/`HandlingClass` live in `vg-core` without serde derives and
+  are `#[non_exhaustive]`. `Custom(name)` keys on its dictionary name directly; a future
+  `EntityType` variant falls back to a lower-cased debug name (no breaking change here).
+- **Unknown handling-class strings fail at load** (`ResolvedPolicy::from_raw`), not lazily at
+  first `classify_*` — a pack typo is a load error.
+- **Layer merge is key-by-key** (a repo/session layer overrides only the keys it names);
+  destination rules merge *field by field* so one layer can flip `demask_allowed` without
+  restating `masked_only`.
+- **Fail-safe defaults:** unclassified entity → `Mask`; unconfigured destination →
+  masked-only `true` and demask `false`; artefact default → `Pass`.
+- **Optional role-gating:** a destination may list `demask_roles`; if non-empty the actor must
+  hold one. This makes the `actor` parameter meaningful without over-building auth (Cedar is
+  still ADR-007's later target).
+
+### Validation status + doubt-driven-development (2026-07-17)
+
+**Verified during PR review:** compiled clean (no new registry deps — `serde`/`serde_json`
+already in the lockfile, chosen deliberately so `--locked` stays green); one `fmt` pass
+applied; full chain green — 4 config + 9 engine tests plus the whole existing workspace suite.
+
+**Codex cross-model doubt-pass** (given the diff + the frozen `PolicyEngine` contract + the
+hard-deny requirement) ran out of its turn budget before a full verdict, but flagged the crux
+(hard-deny bypass) which I then verified directly, along with the other fail-safe properties:
+
+- **Hard-deny is unbypassable — verified.** `demask_allowed` returns `false` for
+  `RemoteModelPrompt`/`ObservabilitySink` via a direct enum `matches!` checked *before* any pack
+  rule is consulted, so no global/repo/session pack (malicious, misconfigured, or mistaken) can
+  flip them. `destination_allows_masked_only` mirrors this on the send-side gate
+  (`is_hard_deny_id` → forced masked-only). Confirmed against
+  `assert_policy_engine_denies_hard_deny_destinations`.
+- **Layering verified:** `load` merges global → (repo over global) → (session over repo),
+  so session > repo > global. A malformed layer (or an unknown handling-class string) makes the
+  *entire* `load()` fail (`PolicyError::Load`) — no partially-loaded, silently-wrong engine.
+  Fail-safe.
+- **Corrected the framing of one "fail-safe default" bullet above.** `artefact_default = Pass`
+  is NOT fail-safe in the same sense as `entity_default = Mask`, and the review rightly flagged
+  the asymmetry. It is nonetheless the *correct* default, for a real reason now documented in a
+  code comment at `config::ResolvedPolicy::from_raw`: artefact class is a whole-file decision
+  (`Block` refuses a file, `Pass` sends it), and defaulting unknown file types to `Block` would
+  refuse everything not allow-listed and make the tool unusable — while their detected PII
+  entities are STILL masked, because entity classification defaults to `Mask` independently.
+  **Hard requirement recorded for T07:** artefact-`Pass` must mean "send after entity masking,"
+  never "skip detection/masking for this file"; if T07 lets an artefact class short-circuit
+  entity scanning, this default becomes a fail-open leak.
+
+Because Codex did not deliver a full verdict, this counts as one partial cross-model cycle; the
+concrete concern it raised (hard-deny bypass) is verified closed, and the asymmetry it would
+have reached is documented and flagged forward.
+
+### Doubt-driven-development, round 2 (Codex cross-model, complete verdict, 2026-07-17)
+
+Re-ran a tighter, exploration-forbidden Codex critique (given the diff + the hard-deny/layering
+contract inline) to get a complete verdict where round 1 had run out of budget. Result: **"no
+issues found after thorough examination."** This is the only Wave B task whose second-round
+critique surfaced nothing — consistent with the manual verification above (hard-deny
+unbypassable, layering fail-safe, defaults documented). No code change from round 2.
+

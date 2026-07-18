@@ -276,3 +276,21 @@ changes:
       - "docs/decisions.md"
       - "docs/next-actions.md"
       - "docs/session-log.md"
+
+  - id: CHG-0015
+    date: 2026-07-17
+    title: "Task T06: native 3-layer PolicyEngine (vg-policy)"
+    intent: "Implement vg-policy's PolicyEngine: JSON policy packs, 3-layer resolution (session>repo>global), a signed-pack verification stub, and the security-load-bearing hard-deny for RemoteModelPrompt/ObservabilitySink enforced in code before any pack rule. Chose serde_json (already in lockfile) to keep --locked green with no new dep. Dispatched under Opus. Two Codex critique rounds (round 2: 'no issues found'). Landed onto main after T05b via base-drift recovery."
+    changed_by: "opus (dispatch) + claude (review) + codex (critique x2)"
+    change_type: build
+    risk_level: medium
+    validation:
+      - "cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check && cargo test: PASS, 4 config + 9 engine tests, in the real repo"
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    links:
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"

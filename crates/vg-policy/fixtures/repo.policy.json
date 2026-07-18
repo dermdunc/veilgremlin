@@ -1,0 +1,15 @@
+{
+  "version": "veilgremlin-repo-v1",
+  "entities": {
+    "overrides": {
+      "hostname": "irreversible-redact",
+      "customer-id": "mask"
+    }
+  },
+  "destinations": {
+    "local-explanation-buffer": {
+      "demask_allowed": true,
+      "demask_roles": ["reviewer", "admin"]
+    }
+  }
+}

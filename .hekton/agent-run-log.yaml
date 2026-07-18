@@ -468,3 +468,33 @@ agent_runs:
     next_actions:
       - "T07 must coordinate demask logging so the vault's demask_event and this AuditSink don't double-log."
       - "Land T06/T08 (base-drift recovery, same as T05b)."
+  - id: RUN-0015
+    date: 2026-07-17
+    agent: "opus (headless dispatch) + claude (review) + codex (cross-model critique x2)"
+    role: "Build Agent"
+    intent: "T06 (vg-policy): native PolicyEngine with 3-layer resolution (session>repo>global), a signed-pack verification stub, and the security-load-bearing hard-deny (demask_allowed returns false for RemoteModelPrompt/ObservabilitySink via a direct enum check BEFORE any pack rule, so no pack can override it). Chose serde_json (already in the lockfile) to keep --locked green with no new dep. Dispatched concurrently under Opus."
+    autonomy_level: 3
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    files_touched:
+      - "crates/vg-policy/src/lib.rs"
+      - "crates/vg-policy/src/config.rs"
+      - "crates/vg-policy/src/engine.rs"
+      - "crates/vg-policy/tests/policy.rs"
+      - "crates/vg-policy/fixtures/*.policy.json"
+      - "crates/vg-policy/Cargo.toml"
+      - "Cargo.lock"
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"
+      - "docs/build-log/2026-07-17-the-policy-format-the-sandbox-chose.md"
+      - "mind-palace/20-projects/factory-output/veilgremlin/session-log.md"
+    validation:
+      - "cargo build --locked && cargo clippy --workspace --all-targets --locked -- -D warnings && cargo fmt --check && cargo test: PASS in the real repo (landed onto main after T05b) -- 4 config + 9 engine tests + the existing suite"
+      - "Hard-deny verified unbypassable (direct enum matches! before any pack rule); layering verified fail-safe (a malformed layer fails the whole load); round-2 Codex critique returned 'no issues found'"
+    risks:
+      - "artefact_default = Pass is the correct default (whole-file class; entity masking still applies via entity_default = Mask) but NOT fail-safe in the same sense; documented + flagged for T07 (artefact-Pass must not skip entity detection or it becomes a fail-open leak)."
+    next_actions:
+      - "Land T08 (base-drift recovery)."

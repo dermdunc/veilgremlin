@@ -527,3 +527,36 @@ agent_runs:
       - "Codex found no panic/out-of-bounds-span risks (the hard never-panic + span-bounds contract holds). Residual: partial/under-spanning (a # inside a quoted YAML value; single-quoted YAML flow scalars) -- documented with concrete reproducers, flagged for T07; cannot cause a missed detection yet because the T03 detectors ignore the spans parameter."
     next_actions:
       - "Wave B complete (T03/T04/T05/T05b/T06/T08 merged). Next: T07 (masking pipeline), carrying forward the T05/T06/T08 T07 notes."
+  - id: RUN-0017
+    date: 2026-07-18
+    agent: "opus (headless dispatch) + fable (fresh-context doubt-pass) + codex (cross-model round) + claude/fable (review + fixes)"
+    role: "Build Agent"
+    intent: "T07 (vg-core pipeline): wired scan()/mask() through all six Wave B crates via trait objects, including the sanctioned contract change (mask gained ctx: &Context; interface-contracts.md v1 -> v1.1). Honored the three banked hard requirements (artefact-Pass never skips detection; detectors scan the full buffer, spans enrichment-only; vault owns demask attribution). Dispatched under Opus from a clean current main -- the tollgate auto-apply worked with no base-drift recovery for the first time."
+    autonomy_level: 3
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    files_touched:
+      - "crates/vg-core/src/api.rs"
+      - "crates/vg-core/Cargo.toml"
+      - "crates/vg-core/tests/pipeline.rs"
+      - "crates/vg-core/tests/pipeline_latency_gate.rs"
+      - "crates/vg-core/benches/mask_pipeline.rs"
+      - "crates/vg-policy/src/engine.rs"
+      - "crates/vg-policy/src/config.rs"
+      - "docs/architecture/interface-contracts.md"
+      - "Cargo.lock"
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"
+      - "docs/build-log/2026-07-18-the-seam-that-needed-one-more-argument.md"
+      - "mind-palace/20-projects/factory-output/veilgremlin/session-log.md"
+    validation:
+      - "cargo build --locked && cargo clippy --workspace --all-targets --locked -- -D warnings && cargo fmt --check && cargo test: PASS in worktree and real repo -- 199 tests across 26 binaries, 0 failures (pipeline integration tests 9; pipeline latency gate; detect-portion asserted <= 25ms via the Scan event)"
+    risks:
+      - "Doubt-driven-development, two fresh-context rounds. Fable (Opus authored, Fable doubted): 13 findings -- 2 High fixed (partial-overlap resolution dropped losing findings whole, leaking uncovered bytes raw -- now trims to fragments; a literal .env dotfile was NOT blocked since Path::extension() is None -- fixed via extension_candidates in vg-policy), 4 Med fixed (audit-less vault mutation on error; parse-before-Block; artefact-scope mask/redact silently Pass -> now a load error; 25ms budget now asserted), 4 Low fixed, 2 documented forward. Codex on the post-fix diff: 1 Medium introduced by the fixes' interaction (Scan counts taken per-fragment after trimming) -- fixed with a mock-detector regression test."
+      - "Flagged forward to T09 (hard requirement): rehydrate/demask must resolve exclusively via MappingRefs, never by pattern-scanning text for placeholder-shaped strings (spoofing surface: input containing EMAIL_001-shaped text is indistinguishable from pipeline output)."
+      - "Contract-shape limit documented: Secret is a String (frozen T02), so non-UTF-8 spans cannot round-trip byte-exactly; unreachable with the all-ASCII T03 detectors."
+    next_actions:
+      - "T09 (vg CLI + Claude Code adapter) is the newly-ready task; T10/T11 after."

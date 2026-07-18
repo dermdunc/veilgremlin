@@ -1632,3 +1632,34 @@ fresh-context cycles complete (Fable full-verdict, then Codex on the fixed diff)
 cycle yielding a single already-fixed Medium — the diminishing-returns pattern the
 doubt-driven-development skill names as the stopping point. Full suite green: pipeline tests
 8 -> 9.
+
+## 2026-07-18 - CI red since T05: keyring's Linux Secret Service backend carried two unmaintained crates
+
+### Context
+
+The human noticed GitHub CI failing. Investigation: **only the `cargo-deny check` job was red
+(every other job — build, clippy, fmt, test, audit, bench — green on the remote), and it had
+been red on every run since the T05 merge.** Cause: `keyring v2`'s default `platform-all`
+features pull the Linux Secret Service backend (`secret-service` → `zbus v3`), whose tree
+carries two RUSTSEC-unmaintained crates — `derivative` (RUSTSEC-2024-0388) and `instant`
+(RUSTSEC-2024-0384). Local verify never saw it because those dependencies are
+Linux-target-only: `cargo tree -i derivative` finds nothing on macOS without `--target all`,
+while CI's ubuntu `cargo-deny` evaluates the full cross-target graph.
+
+### Decision
+
+Remove the unmaintained crates from the graph rather than ignoring the advisories:
+`keyring = { default-features = false, features = ["platform-macos", "platform-windows",
+"linux-default-keyutils"] }` — macOS keeps the Security-framework backend (the spec's
+"macOS first"), Windows keeps its native store, and Linux drops D-Bus Secret Service for
+kernel keyutils (no zbus). `zbus`/`secret-service`/`derivative`/`instant` all leave
+`Cargo.lock`; `cargo deny check` fully green locally (`advisories ok, bans ok, licenses ok,
+sources ok`).
+
+### Process lesson (recorded, not excused)
+
+Five PRs (#12–#19 era) merged while the remote deny job was red, because the review loop ran
+the local verify chain but never checked `gh run list` after pushing — **the exact
+local-green-vs-remote-green lesson T01's own doubt-pass taught on 2026-07-14.** The
+post-merge CI check is now part of the loop: after any merge, confirm the remote run's
+conclusion before calling the task landed.

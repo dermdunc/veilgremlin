@@ -439,3 +439,32 @@ agent_runs:
       - "Two real bugs found+fixed via Codex critique: (1) intern could return an expired-but-unpurged placeholder resolve rejects -- fixed by renewing in place; (2) the UNIQUE ordinal guard did not fire for fixed entity types (NULL entity_custom + SQLite NULL-is-distinct) -- fixed with COALESCE. Both regression-tested."
     next_actions:
       - "T05b/T06/T08 tollgates still to be completed -- they did not land with T05 (ledgers still in-progress)."
+  - id: RUN-0014
+    date: 2026-07-17
+    agent: "opus (headless dispatch) + claude (review) + codex (cross-model critique x2)"
+    role: "Build Agent"
+    intent: "T05b (vg-audit): append-only, redaction-safe AuditSink. JSONL storage, one RecordV1 per fsynced line, a versioned schema that MIRRORS the frozen vg-core AuditEvent types (non_exhaustive-aware fallible conversions) rather than deriving serde on the contract, and a redaction-safety property test with adversarial control-char raw values + a negative control. Dispatched concurrently under Opus. Two Codex cross-model critique rounds fixed 6 real robustness/security bugs in the log-recovery path."
+    autonomy_level: 3
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    files_touched:
+      - "crates/vg-audit/src/lib.rs"
+      - "crates/vg-audit/src/record.rs"
+      - "crates/vg-audit/tests/sink.rs"
+      - "crates/vg-audit/Cargo.toml"
+      - "Cargo.lock"
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"
+      - "docs/build-log/2026-07-17-an-audit-log-sized-to-fit-its-lockfile.md"
+      - "mind-palace/20-projects/factory-output/veilgremlin/session-log.md"
+    validation:
+      - "cargo build --locked && cargo clippy --workspace --all-targets --locked -- -D warnings && cargo fmt --check && cargo test: PASS in the real repo (landed onto main after T05) -- 13 sink + 3 record tests + the existing suite"
+    risks:
+      - "Round 1 fixed 5 log-recovery bugs (UTF-8 torn-tail bricking, complete-corrupt-line/schema handling, duplicate AuditId, error-text redaction, truncation recovery); round 2 fixed a 6th (a valid torn tail was indexed then truncated -> index/disk inconsistency). All regression-tested."
+      - "By design the sink cannot scrub raw values (no oracle); the no-raw-value invariant is enforced at event construction (T07). Documented."
+    next_actions:
+      - "T07 must coordinate demask logging so the vault's demask_event and this AuditSink don't double-log."
+      - "Land T06/T08 (base-drift recovery, same as T05b)."

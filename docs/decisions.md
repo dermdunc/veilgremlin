@@ -1042,3 +1042,152 @@ reconciliation above:
   a plausible-but-false safety claim standing.
 
 Full chain green after the fix: 40 vg-core + 6 vg-vault unit + 15 vault integration tests.
+
+## 2026-07-17 - T05b audit sink: JSONL storage, versioned schema mirrors, and dependencies chosen to fit a hand-editable lockfile
+
+### Context
+
+T05b (Squad 5) dispatched headlessly to implement `vg_core::traits::AuditSink` in the
+empty `vg-audit` stub crate. The task spec left the storage technology open (JSONL file
+or SQLite, "pick one and record the choice, don't ask") and required versioned record
+types plus the no-raw-values property test. Like T04's dispatch, this session had **no
+reachable compiler**: every `cargo`/`rustc`/script invocation was permission-blocked in
+the headless environment, which ended up shaping one real decision (below), not just the
+validation story.
+
+### Decisions
+
+- **Storage = append-only JSON Lines file, fsynced per write** (`JsonlAuditSink`), not
+  SQLite. Append-only maps directly onto `O_APPEND` + `fsync` with no schema/connection
+  machinery; the audit log is a sequential record of events, not a queryable mapping
+  store, so T05's SQLCipher choice solves a different problem and "one storage tech
+  across both" bought nothing here. The deciding constraint was dependency-light-ness
+  taken literally: serde/serde_json/thiserror/uuid are all already in `Cargo.lock` (via
+  criterion's tree and `vg-core`), while `rusqlite`/SQLCipher are not — and with no
+  runnable `cargo` in-session, a lockfile entry that can't be generated can't be added
+  honestly (see next point).
+- **`Cargo.lock` was updated by hand** — safe only because the change is a single
+  dependency-edge list (`vg-audit`'s own entry) between packages already locked with
+  checksums. Two would-be dependencies were dropped to keep it that way: `tempfile`
+  (dev-dep; replaced by a 10-line std-only tempdir in the test file) and uuid's `serde`
+  feature (replaced by a `#[serde(with)]` adapter over `Display`/`parse_str`, same wire
+  format). The reasoning is recorded in `vg-audit/Cargo.toml` itself so the next agent
+  doesn't "clean it up" into a broken `--locked` build.
+- **The storage schema is a deliberate mirror, not serde derives on `vg-core` types.**
+  `vg-core` is frozen and serialization is vg-audit's concern, so `record.rs` defines
+  `RecordV1`/`EventV1` (+ mirrors of `EntityType`, `ArtefactKind`, `HandlingClass`,
+  `Destination`) with explicit conversions both ways. Every record carries
+  `schema_version` (currently 1); the exact v1 wire shape is pinned by a unit test that
+  says, in its own doc comment, "a change here means a version bump and a new record
+  type, not an edit". Conversions toward storage are fallible (`TryFrom`) for every
+  `#[non_exhaustive]` contract enum, so a future contract variant fails loudly at write
+  time instead of being silently dropped. `DestinationV1` serializes to exactly the
+  stable `DestinationId` strings (`"remote-model-prompt"`, ...) so the audit log and
+  policy dictionaries share one destination vocabulary — also pinned by test.
+- **Recovery semantics, chosen and tested:** an unparseable line at open is skipped and
+  counted (`skipped_lines()`) — that's what a torn write from a crashed writer looks
+  like — and an unterminated final line is healed with a lone newline so the next append
+  starts clean (the file is never truncated or rewritten). But a *well-formed* record
+  with an unknown `schema_version` refuses to open (`OpenError::UnknownSchemaVersion`):
+  silently skipping real records written by a newer build would make the audit trail
+  quietly lossy, which is worse than failing.
+- **`get` serves from an in-memory index** built by replaying the file at open —
+  acceptable for Phase 1's in-process, per-invocation lifetime (same trade-off already
+  accepted for T04's session cache). The index stores what the storage schema
+  *round-trips to*, not the caller's original value, so a lossy conversion would fail
+  the conformance roundtrip test immediately rather than hiding until the first restart.
+- **The acceptance property test checks the persisted bytes, not just the Debug form.**
+  `tests/sink.rs` writes every event variant "about" a table of adversarial raw values
+  (newlines, tabs, quotes, backslashes, a realistic IBAN and API key, unicode) and
+  asserts none appear in the file either verbatim or JSON-escaped — the exact leak class
+  `assert_audit_event_excludes_raw_values`'s own doc warns about — plus a negative
+  control proving the helper actually catches a deliberately leaky event.
+
+### Assumptions (recorded, not asked — one-shot dispatch)
+
+- Type names `JsonlAuditSink`/`OpenError` and the file layout (`lib.rs` + `record.rs`)
+  were free choices; nothing in the contract names the concrete impl type.
+- `OpenError` is a crate-local error type: `open()` isn't part of the frozen `AuditSink`
+  trait, and `AuditError`'s single frozen `Write` variant is the wrong shape for it.
+- Snake_case/kebab-case wire naming follows serde convention and the `DestinationId`
+  precedent; nothing else in the repo had established a JSON naming style yet.
+
+### Validation status
+
+**Not compiled or tested in the dispatch session** — all toolchain access was
+permission-blocked (same constraint as T04's dispatch; recorded there as a factory gap).
+Mitigations: a line-by-line self-review pass that caught three real would-be compile errors
+before handoff (`PathBuf` has no `Display` in thiserror format strings; an exhaustive match
+on `#[non_exhaustive]` `Destination`; a moved-while-borrowed `path` in `open`), plus
+rustfmt-canonical formatting written deliberately.
+
+**Verified during PR review (2026-07-17):** the standard verify chain ran clean on the
+first real attempt after a single `fmt` pass — `cargo build --locked && cargo clippy
+--workspace --all-targets --locked -- -D warnings && cargo fmt --check && cargo test`,
+with 8 sink tests + 3 record tests + the whole existing suite green.
+
+### Doubt-driven-development (Codex cross-model, 2026-07-17)
+
+A fresh-context Codex review, given the diff + the frozen `AuditSink` contract + the
+redaction-safety requirement, found a strong set on this security-critical persistence
+layer. Reconciliation:
+
+**Fixed (real robustness/security):**
+- **A crash mid-multibyte-UTF-8 in the torn final line bricked the whole log.** `open()`
+  read the file with `read_to_string`, which fails entirely on any invalid UTF-8 —
+  contradicting the documented "torn write tolerated" guarantee. Now reads raw bytes and
+  decodes per line, so invalid UTF-8 is confined to (and tolerated in) the torn tail.
+- **Any unparseable line was silently skipped, not just the torn final one.** A complete
+  (newline-terminated) interior line that fails to parse is corruption/tampering, not a
+  torn write, and silently dropping it made the index no longer represent the append log —
+  the exact "quietly lossy" failure the `UnknownSchemaVersion` path was already written to
+  avoid. Now only a genuinely torn *final* line is tolerated; every complete line must
+  parse or `open()` returns the new `OpenError::CorruptLine`. This also closes the
+  bypass where a malformed `schema_version` (e.g. the string `"2"`) failed `VersionProbe`
+  and was skipped as torn instead of refused.
+- **Recovery changed from newline-heal to truncation.** The old heal appended a `\n` to the
+  torn tail, immortalising a garbage fragment that was re-skipped on every future open — and
+  under the stricter rule above, that healed fragment would then read as a fatal
+  complete-corrupt line. Truncating the torn tail back to the last complete record is the
+  honest recovery (this sink fsyncs `record + '\n'` per write, so a tail without a trailing
+  newline was never a committed record) and keeps the file all-complete-lines.
+- **A duplicate `AuditId` on replay silently shadowed the earlier record** (`index.insert`
+  overwrote it; `len()` under-counted). IDs are internal UUIDv4s, so a duplicate means the
+  append-only log was spliced/tampered — now a hard `OpenError::DuplicateId`.
+- **Error text could leak a raw value.** `unsupported()` Debug-formatted the *value* of an
+  unknown future variant into `AuditError::Write` — a string a caller may log. For the one
+  tool whose whole job is keeping raw values out of side channels, that is exactly the wrong
+  failure. Now names only the *type*, never the value. Added a parent-directory fsync on
+  first create (file-level fsync alone doesn't make a new dirent durable).
+- Four regression tests added, one per fixed behaviour.
+
+**Reconciled as accepted trade-offs (documented, not changed):**
+- **The sink cannot enforce "no raw value persisted" — and by design does not try.** It has
+  no oracle for what is "raw" (it never sees the vault or the original detected values), so
+  it faithfully persists whatever event it is handed; keeping events clean is the
+  *constructing* code's contract (Task T07), enforced at construction by
+  `assert_audit_event_excludes_raw_values`. The struct doc now states this boundary
+  explicitly. The property test proves well-constructed events don't leak; it cannot prove a
+  buggy caller won't hand the sink a leaky `Block.reason`, because nothing at this layer
+  could.
+- **Single-live-sink coupling:** `get`'s in-memory index only reflects this sink's own
+  writes; a second sink on the same file, or another process appending, needs a reopen to
+  be seen. Made explicit in the struct doc; multi-opener coordination is out of Phase 1
+  scope.
+
+Round 1 stopped after one cross-model cycle — every finding was fixed or explicitly classified.
+
+### Doubt-driven-development, round 2 (Codex cross-model, 2026-07-17)
+
+A second, tighter Codex critique (re-run for a complete verdict across all Wave B tasks) found
+one real bug that round 1's fixes had actually *introduced*:
+
+- **Fixed (High): a valid-JSON final line with no trailing newline was indexed, then truncated
+  off disk.** Round 1's recovery reads the torn tail, and if it happened to be a complete,
+  parseable record, `index.insert`ed it — but the post-loop truncation then removed it from
+  disk. So `get()`/`len()` reported an event that a reopen would lose: an index/disk
+  inconsistency. Fixed by skipping the torn tail *unconditionally* (before parse/index), which
+  is correct anyway — a record whose terminating `\n`+fsync never landed was never a
+  durably-committed record for this sink, so discarding it is honest, and now index and disk
+  agree. New regression test `a_valid_record_without_a_trailing_newline_is_not_indexed_then_lost`.
+  Full chain green after: 13 sink tests + 3 record tests + the existing suite.

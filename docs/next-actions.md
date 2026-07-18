@@ -242,3 +242,21 @@ Repo source-of-truth for the work queue. Tasks T01–T11 are defined in [`archit
 - [ ] Re-audit build-log coverage (a T05 entry was added:
       `2026-07-17-the-vault-that-had-to-remember-its-counting.md`).
 - [ ] Decide serial-vs-concurrent for the remaining Wave B tasks (T05b/T06/T08) — still open.
+
+## Session Update: 2026-07-17 — T05b (audit sink) built under Opus, reviewed, landed
+
+- [x] T05b implemented in `crates/vg-audit/` (JSONL append-only `AuditSink`, versioned
+      schema mirror, redaction-safety property test). Dispatched concurrently under Opus.
+- [x] Verified during review (full chain green: 13 sink + 3 record tests). Two Codex
+      cross-model critique rounds fixed 6 real robustness/security bugs total (UTF-8
+      torn-tail bricking; complete-corrupt-line / malformed-schema handling; duplicate
+      AuditId; error-text redaction; truncation recovery; and — round 2 — a
+      valid-torn-tail indexed-then-truncated index/disk inconsistency). See
+      `docs/decisions.md`.
+- [x] Landed onto `main` after T05 merged (base-drift recovery: the tollgate auto-apply
+      failed because the worktree was cut from a pre-T04/T05 commit; the conflict-free
+      `vg-audit` crate was applied directly and `Cargo.lock`/docs reconciled onto current
+      `main`).
+- [ ] T07 consumes this sink in `mask()` pipeline assembly; coordinate demask logging so
+      the vault's own `demask_event` and this `AuditSink` don't double-log (T05 note).
+- [ ] Decide serial-vs-concurrent for the remaining Wave B tasks (T06/T08) — still open.

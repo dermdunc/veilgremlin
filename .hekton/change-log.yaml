@@ -258,3 +258,21 @@ changes:
       - "docs/decisions.md"
       - "docs/next-actions.md"
       - "docs/session-log.md"
+
+  - id: CHG-0014
+    date: 2026-07-17
+    title: "Task T05b: append-only redaction-safe AuditSink (vg-audit)"
+    intent: "Implement vg-audit's AuditSink as an append-only JSONL store with a versioned schema that mirrors (not derives serde on) the frozen vg-core AuditEvent types, fsync-per-write, torn-write recovery via truncation, and a redaction-safety property test. Dispatched under Opus. Two Codex cross-model critique rounds fixed 6 real robustness/security bugs in the recovery path. Landed onto main after T05 via base-drift recovery (tollgate auto-apply failed on the stale worktree base)."
+    changed_by: "opus (dispatch) + claude (review) + codex (critique x2)"
+    change_type: build
+    risk_level: medium
+    validation:
+      - "cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check && cargo test: PASS, 13 sink + 3 record tests, in the real repo"
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    links:
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"

@@ -9,5 +9,15 @@ description = "Append-only, redaction-safe audit sink implementing vg-core::Audi
 [lints]
 workspace = true
 
+# Dependency set deliberately limited to packages already in the workspace lockfile
+# (serde/serde_json via criterion's tree, thiserror/uuid via vg-core): this task ran in a
+# headless dispatch without a runnable cargo, so Cargo.lock was updated by hand — safe
+# only for edges between already-locked packages. Notably uuid's "serde" feature is NOT
+# enabled (the storage schema carries UUIDs as strings instead) because that would add a
+# lock edge that can't be verified by hand.
 [dependencies]
 vg-core = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+uuid = { version = "1", features = ["v4"] }

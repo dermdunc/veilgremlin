@@ -1,0 +1,17 @@
+# An audit log sized to fit its lockfile
+
+**2026-07-17**
+
+Task T05b was the audit sink: the `vg-audit` crate that records what VeilGremlin *did* — scanned this, blocked that, created a mapping, denied a demask — without ever recording the sensitive values those decisions were about. The interesting design constraint was stated up front in the contract: no raw value in any audit event, ever, and the test for it has to catch the sneaky case where a value containing control characters would appear *escaped* in the serialized output rather than verbatim.
+
+The dispatch hit the same wall T04 documented: no compiler. Every `cargo` and `rustc` invocation came back "requires approval" with no human in the loop to approve it. Second occurrence, so this is now a pattern in the factory's unattended-dispatch story, not an incident.
+
+What made this session different is that the missing compiler didn't just change how the code was verified — it changed what the code *is*. The task spec offered a free choice of storage: a JSON Lines file or SQLite. On a normal day that's a taste question. On this day it had a hard technical answer: CI builds with `--locked`, adding any dependency means regenerating `Cargo.lock`, and regenerating a lockfile is exactly the kind of thing you cannot do without cargo. What you *can* do by hand, safely, is edit one crate's dependency-edge list — provided every package on it is already locked elsewhere in the workspace with a checksum. serde and serde_json were already in the tree (criterion pulls them in), thiserror and uuid come with `vg-core`. rusqlite does not exist in that lockfile at all. So: JSON Lines.
+
+The same constraint then pruned two more dependencies that would normally be automatic. The `tempfile` test helper — not in the lockfile — got replaced by ten lines of std-only tempdir. And uuid's `serde` feature, which would have added an unverifiable dependency edge, got replaced by a small serde adapter that writes UUIDs through their ordinary string form — identical bytes on the wire, no new edge. The Cargo.toml carries a comment explaining all this, so a future cleanup pass doesn't helpfully "simplify" it into a broken build.
+
+One decision worth defending on its own terms, compiler or not: the on-disk schema is a deliberate *mirror* of the frozen contract types, not serde derives slapped onto them. Every record carries a `schema_version`; the exact v1 wire shape is pinned by a test whose doc comment says a change there means a version bump and a new record type, not an edit. And because the contract's enums are marked non-exhaustive — new variants are expected to arrive in later tasks — every conversion toward storage is fallible on purpose: a future event variant this schema doesn't know will fail loudly at write time instead of being silently mis-filed into an audit log that's supposed to be the thing you trust when everything else is in question.
+
+The code shipped un-compiled, stated plainly. The self-review pass that substituted for the compiler caught three genuine would-be build breaks (a `Display` that doesn't exist on `PathBuf`, an exhaustive match the contract forbids, a use-after-move the borrow checker would have flagged in seconds). Whether it caught all of them is exactly what the reviewer's `cargo test -p vg-audit` will say.
+
+Full record: [`docs/decisions.md`](../decisions.md#2026-07-17---t05b-audit-sink-jsonl-storage-versioned-schema-mirrors-and-dependencies-chosen-to-fit-a-hand-editable-lockfile).

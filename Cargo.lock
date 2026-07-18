@@ -1837,11 +1837,17 @@ dependencies = [
 name = "vg-core"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "hmac",
  "sha2",
+ "tempfile",
  "thiserror",
  "uuid",
+ "vg-audit",
  "vg-detectors",
+ "vg-parsers",
+ "vg-policy",
+ "vg-vault",
  "zeroize",
 ]
 

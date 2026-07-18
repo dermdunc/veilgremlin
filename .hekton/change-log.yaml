@@ -313,3 +313,22 @@ changes:
       - "docs/next-actions.md"
       - "docs/session-log.md"
       - ".hekton/risk-register.yaml"
+
+  - id: CHG-0017
+    date: 2026-07-18
+    title: "Task T07: masking pipeline wired in vg-core (contract v1 -> v1.1)"
+    intent: "Wire scan()/mask() through all six Wave B crates via trait objects, with the sanctioned contract change adding ctx: &Context to mask (interface-contracts.md v1 -> v1.1). Honors the banked Wave B requirements (artefact-Pass never skips detection; full-buffer scanning, spans enrichment-only; vault owns demask attribution). Dispatched under Opus; doubted by a fresh-context Fable pass (13 findings: 2 High incl. partial-overlap leak + .env dotfile fail-open, all fixed or documented) and a Codex round on the post-fix diff (1 Medium from the fixes' own interaction, fixed). Also hardens vg-policy (dotfile extension_candidates; artefact-scope mask/redact is now a load error)."
+    changed_by: "opus (dispatch) + fable (doubt-pass + fixes) + codex (cross-model round)"
+    change_type: build
+    risk_level: high
+    validation:
+      - "cargo build --locked && cargo clippy --workspace --all-targets --locked -- -D warnings && cargo fmt --check && cargo test: PASS, 199 tests / 26 binaries / 0 failures in the real repo; detect-portion asserted <= 25ms via the Scan event"
+    approvals:
+      required: true
+      status: approved
+      approver: coderturtle
+    links:
+      - "docs/decisions.md"
+      - "docs/next-actions.md"
+      - "docs/session-log.md"
+      - "docs/architecture/interface-contracts.md"

@@ -185,6 +185,31 @@ impl ResolvedPolicy {
             None => HandlingClass::Pass,
         };
 
+        let artefact_by_extension = resolve_class_map(raw.artefacts.by_extension, true)?;
+        let artefact_by_language = resolve_class_map(raw.artefacts.by_language, false)?;
+        let artefact_by_mime = resolve_class_map(raw.artefacts.by_mime, false)?;
+
+        // Phase-1 restriction (T07 review, fail-open fix): the pipeline implements only
+        // `pass` and `block` at ARTEFACT scope — a pack saying an artefact class is
+        // `mask`/`irreversible-redact` would previously parse fine and then be silently
+        // treated as `Pass` by the pipeline, i.e. a policy author's "redact this whole
+        // file" declaration failed open. Reject it loudly at load instead; artefact-scope
+        // mask/redact semantics are a later-phase feature, not a silent no-op.
+        for (scope, class) in std::iter::once(("default", &artefact_default))
+            .chain(artefact_by_extension.iter().map(|(k, v)| (k.as_str(), v)))
+            .chain(artefact_by_language.iter().map(|(k, v)| (k.as_str(), v)))
+            .chain(artefact_by_mime.iter().map(|(k, v)| (k.as_str(), v)))
+        {
+            if !matches!(class, HandlingClass::Pass | HandlingClass::Block) {
+                return Err(PolicyError::Load(format!(
+                    "artefact class for {scope:?} is {class:?}, but artefact-scope policy \
+                     supports only 'pass' or 'block' in Phase 1 (entity-scope handles \
+                     mask/irreversible-redact) — refusing to load rather than silently \
+                     treating it as pass"
+                )));
+            }
+        }
+
         Ok(Self {
             version: raw
                 .version
@@ -192,9 +217,9 @@ impl ResolvedPolicy {
             entity_default,
             entity_overrides: resolve_class_map(raw.entities.overrides, false)?,
             artefact_default,
-            artefact_by_extension: resolve_class_map(raw.artefacts.by_extension, true)?,
-            artefact_by_language: resolve_class_map(raw.artefacts.by_language, false)?,
-            artefact_by_mime: resolve_class_map(raw.artefacts.by_mime, false)?,
+            artefact_by_extension,
+            artefact_by_language,
+            artefact_by_mime,
             destinations: raw
                 .destinations
                 .into_iter()
@@ -351,6 +376,26 @@ mod tests {
             ..RawPack::default()
         };
         let err = ResolvedPolicy::from_raw(raw).expect_err("bad class must fail resolution");
+        assert!(
+            matches!(err, PolicyError::Load(_)),
+            "expected Load error, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn artefact_scope_mask_or_redact_is_a_load_error_not_a_silent_pass() {
+        // T07 review (fail-open fix): the pipeline implements only pass|block at artefact
+        // scope. A pack declaring an artefact class of mask/irreversible-redact used to
+        // parse fine and then be silently treated as Pass — a policy author's "redact
+        // this whole file" failing open. It must refuse to load instead.
+        let raw = RawPack {
+            artefacts: RawArtefactRules {
+                by_extension: class_map(&[("sql", "irreversible-redact")]),
+                ..RawArtefactRules::default()
+            },
+            ..RawPack::default()
+        };
+        let err = ResolvedPolicy::from_raw(raw).expect_err("artefact-scope redact must fail load");
         assert!(
             matches!(err, PolicyError::Load(_)),
             "expected Load error, got {err:?}"

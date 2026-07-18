@@ -20,6 +20,7 @@
 | 2026-07-03 | Build driven through Hekton's task-DAG orchestrator (`agentic-control-tower`), not manual per-task dispatch | `.hekton/veilgremlin-dag.toml` is now the machine source of truth for the T01-T11 DAG (transcribed from `architecture/work-breakdown.md`); `.hekton/build-tasks/*.md` are generated engine-gateway-lab task specs (regenerate via `dag gen-specs`, don't hand-edit). `.control-tower/` tracks each task's lifecycle. All build tasks route through `claude-cli`/`codex-cli` (cloud, V1 scope — no local-model build capability exists yet) at `privacy: vendor-allowed` (this repo's own source isn't privacy-sensitive; see `.hekton/project.yaml`'s `privacy_boundary: internal`). See `agentic-control-tower`'s root `decisions.md` ADR-013 for the full orchestrator design. |
 | 2026-07-04 | Repo ownership moved from **coderturtle** (private) to **dermdunc** (public) | VeilGremlin is an enterprise architecture/governance/risk tool, not agentic-engineering tooling — belongs under the professional-identity account per Hekton's new domain-based GitHub routing decision (see `~/hekton/docs/decisions.md`, 2026-07-04). Supersedes the 2026-06-30 "coderturtle, private" decision above. |
 | 2026-07-17 | ADR-011 (T05) `vg-vault` = **SQLCipher via `rusqlite` (vendored OpenSSL), OS-keychain-wrapped DB key, per-install salt in an encrypted `meta` table; `Keyer` ordinal counters reseeded from persisted rows at open** | Encrypted-at-rest reversible mapping store; keychain wrap keeps the key off disk; reseed prevents display-ordinal collision/drift across process restarts. Added an additive `Keyer::seed_ordinal` to `vg-core` (not a frozen-contract change). See the 2026-07-17 T05 entry below. |
+| 2026-07-18 | ADR-012 (T07) **`vg-core::scan`/`mask` pipeline wired; contract bumped v1 → v1.1 (`mask` gains `ctx: &Context`)** | `mask` needs the same detectors/parsers `scan` runs but the frozen signature had no `Context`; the sanctioned contract-change fix is an explicit param, not smuggling detectors into `Policy` or pre-computing findings. Also fixed the pipeline order (artefact-Block short-circuit; `Pass` never skips detection; full-buffer detection with spans as enrichment; specific-over-generic overlap resolution; irreversible/entity-Block never interned; one Scan/Block audit event; vault owns demask attribution). See the 2026-07-18 T07 entry below. |
 
 Full reasoning and the Mermaid-illustrated design are in [`spec/requirements-and-design-spec.md`](spec/requirements-and-design-spec.md).
 
@@ -1464,3 +1465,170 @@ gate + JSON fallback already back-stop structure):
 
 Both are the same "detector could miss part of a value once spans gate detection" risk already
 flagged above — now with concrete reproducers to test against at T07.
+
+## 2026-07-18 — T07: masking pipeline wired (`scan`/`mask`), contract v1 → v1.1
+
+### Context
+
+`vg-core::scan` and `mask` were frozen-signature `todo!()` stubs since T02; every crate they
+compose (detectors T03, keying T04, vault T05, audit T05b, policy T06, parsers T08) is now
+merged. T07 replaced the two bodies with the real pipeline, reaching the implementations only
+through `vg-core`'s own trait objects (`Context { parsers, detectors }`,
+`Policy { engine, vault, audit }`) — no new normal-build dependency on any implementing crate;
+the integration tests and criterion bench pull the real crates in as **dev-dependencies**, the
+same resolves-fine cycle T04 established for `vg-detectors`.
+
+### Contract change v1 → v1.1: `mask` gains `ctx: &Context`
+
+The frozen `mask(input, policy, ns)` had no way to reach the detectors/parsers `scan` gets via
+`Context`, yet `mask`'s whole job is detect-then-mask. Resolved through the contract-change
+protocol (`architecture/agent-factory-plan.md` §6): added `ctx: &Context` →
+`mask(input, ctx, policy, ns)`, bumped `interface-contracts.md` to **v1.1** with an inline
+versioned note in §2 and a Versioning-section entry. Deliberately **not** done by smuggling
+detectors into `Policy` (conflates "what to do" with "how to find it") or by having callers
+pre-compute `Vec<Finding>` (duplicates `scan` at every call site and lets a caller mask a stale
+or hand-forged finding set) — the explicit parameter is the sanctioned fix named in the dispatch.
+No current caller existed (the CLI/adapters had not yet wired `mask`), so no call sites migrated.
+
+### Pipeline order and the hard requirements it honours
+
+1. **Artefact classified first.** `policy.engine.classify_artefact(&hint)`; a `Block` artefact
+   (e.g. a `.env` per the default fixture) returns a `MaskedPack` with empty `text`,
+   `stats.blocked_artefacts = 1`, no mapping refs, and an `AuditEvent::Block` — the content
+   never reaches the pack.
+2. **`Pass` ≠ "skip detection" (T06 review).** Entity scanning runs for every non-Block
+   artefact regardless of artefact class, or `Pass` would fail open.
+3. **Spans are enrichment only (T08 review).** The first `can_parse` parser supplies spans, but
+   detectors always scan the **full raw buffer** — the two documented YAML under-spanning
+   reproducers (`#` inside a quoted value; single-quoted flow scalars) would become
+   missed-secret bugs if detection were span-gated.
+4. **Overlap resolution: specific over generic, then longer span.** Greedy interval selection by
+   priority — the entropy catch-all `Secret` (specificity 0) loses to any concretely-typed
+   finding (specificity 1) covering the same bytes (the anticipated `Email`-over-`Secret` case),
+   and among equally-specific findings the longer span wins. No bytes are ever masked twice.
+5. **Class handling.** `Mask` → `vault.intern` + placeholder; `IrreversibleRedact` and
+   entity-level `Block` → fixed typed marker `[REDACTED:TYPE]`, **never interned** (the
+   "irreversible never vault-stored" criterion is tested); `Pass` → bytes untouched. Replacements
+   applied back-to-front so earlier byte offsets stay valid.
+6. **One audit event, written and returned.** `AuditEvent::Scan { counts, detector_version,
+   latency_us }` (latency measured around the detect step; `detector_version` = sorted detector
+   ids joined with `+`), or the `Block` event for a blocked artefact.
+
+### Assumptions recorded (per the dispatch's "record, don't ask" instruction)
+
+- **Detector-set provenance string.** The `Scan` event's `detector_version` has no single
+  authoritative source (each detector has its own `DetectorId`, there is no crate-wide version),
+  so it is composed as the sorted detector ids joined with `+` (e.g. `email+entropy+ip+iban-sortcode+phone`).
+  Stable, human-legible, no raw value. Revisit if a real semver-style detector-pack version lands.
+- **`stats.counts` / audit counts semantics.** Counts tally every *handled* finding (Mask,
+  IrreversibleRedact, entity-Block) by entity type; a `Pass` finding is a no-op and is not
+  counted. The same `EntityCounts` feeds both the `MaskedPack.stats` and the `Scan` event.
+- **Non-UTF-8 spans.** Value extraction and the final pack text use `String::from_utf8_lossy`.
+  The five deterministic detectors match ASCII-shaped values, so this is lossless in practice;
+  a value with invalid UTF-8 would be interned in its lossy form. Acceptable for Phase 1.
+- **Demask attribution has one owner (T05 review).** The vault's own `demask_event` table records
+  every `resolve`. The pipeline therefore emits **no** `AuditEvent::DemaskDecision`; when
+  `rehydrate`'s allowed path is wired (T07/T09, still `todo!()` — its frozen signature has no
+  vault handle, so it is out of scope here), it must not double-log. The vault owns demask
+  attribution in Phase 1.
+
+### Validation
+
+Headless dispatch: no compiler in-session (`cargo`/`rustc` approval-gated — see auto-memory). Not
+compiled or run here; correctness is by construction against the read implementations and flagged
+for verification at review. Added `crates/vg-core/tests/pipeline.rs` (e2e mask over a mixed
+fixture through the real crates; the `assert_masked_pack_excludes_raw_values` property over the
+fixture's raw values; `.env` block; irreversible-redact-never-interned via a fresh-handle
+`mapping_count == 0`), `tests/pipeline_latency_gate.rs` (plain-`#[test]` CI gate extending the
+`vg-detectors` precedent to the full pipeline), and `benches/mask_pipeline.rs` (criterion,
+compile-checked in CI). `Cargo.lock` should be unchanged — the new dev-deps (`vg-parsers`,
+`vg-vault`, `vg-policy`, `vg-audit`, `tempfile`, `criterion`) are all already in the workspace
+graph.
+
+**Verified during PR review (2026-07-18):** built clean after a lockfile refresh; one trivial
+clippy lint (`sort_by_key`) and an `fmt` pass. Full workspace suite green.
+
+### Doubt-driven-development (fresh-context Fable review, 2026-07-18)
+
+Run per the doubt-driven-development skill before the tollgate. CLAIM: *"T07's `mask()`
+composes six independently-built crates such that no raw detected value can reach
+`MaskedPack.text`, the vault, or the audit trail in violation of policy — under overlapping
+findings, malformed input, and every artefact class."* The DOUBT step was a **fresh-context
+Fable subagent** (Opus authored this task; a different reviewing model with none of the
+authoring session's context), given ARTIFACT + CONTRACT only and explicitly forbidden from
+reading the author's own docs (decisions/session-log/build-log) to avoid contamination. It
+returned a complete 13-finding verdict. Reconciliation (each finding re-verified against the
+code before classification):
+
+**Fixed — 2 High (both verified real before fixing):**
+1. **Partial overlap dropped the losing finding whole, leaking its uncovered bytes raw.**
+   `resolve_overlaps` was greedy accept-or-drop; the entropy detector's own documented
+   tokenizer residual (`@`/`.`/`-` are token bytes) produces exactly the killing scenario — a
+   `Secret` span over `userinfo@host` partially overlapped by an accepted `Email` tail meant
+   the secret head survived raw into `pack.text`. Fixed: losers are **trimmed to their
+   uncovered fragments**, never discarded. Regression test
+   `partially_overlapping_findings_leak_no_detected_bytes`, with preconditions asserting the
+   overlap actually occurs so it can't pass vacuously.
+2. **A literal `.env` file was NOT blocked.** `Path::new(".env").extension()` is `None` in
+   Rust, so the contract's canonical Block example fell through to `artefact_default = pass`
+   and failed open — and the original test's `secrets.env` filename (which *does* have an
+   `env` extension) masked the bug. Fixed in `vg-policy` (`extension_candidates`: dotfiles
+   also try the first segment after the leading dot, mirroring `vg-parsers`' env matcher);
+   the test now uses the bare `.env` name to lock the regression.
+
+**Fixed — 4 Medium:** (3) an intern failure mid-loop left durably-persisted mappings with no
+audit record — a best-effort partial `Scan` event is now written before the error propagates;
+(4) Block-classed artefacts were parsed *before* the Block check on the unstated assumption
+that parsers never copy content into output (`SourceCode(String)`/`Field(String)` are
+content-capable; the CSV parser already clones header names) — Block is now checked first,
+recording `ArtefactKind::Unknown` since not touching blocked content outranks provenance
+detail; (5) artefact-scope `mask`/`irreversible-redact` in a pack was silently treated as
+`Pass` (fail-open on a representable config) — now a load-time `PolicyError::Load` in
+`vg-policy`, with a unit test; (6) the 25ms budget had no real enforcement — the detect-only
+portion `mask` measures (excluding vault/audit I/O by construction) is now asserted <= 25ms
+via the `Scan` event in a deterministic test, with the 12x e2e wall-clock gate kept as
+backstop.
+
+**Fixed — 4 Low:** runtime span guard at the seam (a non-conformant third-party detector span
+panicked mid-mask — now dropped, loudly in debug); zero-width spans filtered (they spliced
+phantom placeholders and interned the empty string); `mapping_refs` deduped; ordinals mint in
+forward document order (first email in the buffer is `EMAIL_001` — classify/intern forward,
+splice backward). Plus the `Scan` event's counts now record **all detections** (including
+policy-`Pass`ed ones — the audit trail must answer "what was found") while `MaskStats.counts`
+remains the handled subset, both documented.
+
+**Documented as trade-offs / flagged forward (not fixed here):**
+- **Non-UTF-8 spans can't round-trip** (`Secret` is a `String`, frozen at T02). Unreachable
+  with the all-ASCII T03 detectors; recorded as a contract-shape limitation to revisit if a
+  non-ASCII (warm-path NER) detector lands.
+- **Placeholder spoofing surface** (input already containing `EMAIL_001`-shaped text is
+  indistinguishable from pipeline output; the T04 display format has no delimiters). **Hard
+  requirement recorded for T09:** `rehydrate`/demask must resolve exclusively via the pack's
+  `MappingRef`s — never by pattern-scanning text for placeholder-shaped strings.
+
+The reviewer also explicitly cleared what it checked and found sound (no raw-value path
+through any error-message string; `detector_version` is ids only; the dev-dependency edges
+create no build-graph cycle). Full suite green after all fixes (pipeline tests 5 -> 8;
+vg-policy config tests +1).
+
+### Codex cross-model round (2026-07-18, human-approved, run on the POST-fix diff)
+
+Pointed deliberately at the surfaces the Fable-round fixes had just created (trimming
+arithmetic, forward-intern/backward-splice split, best-effort audit path,
+`extension_candidates`). Verdict: **one Medium finding — real, and introduced by the
+interaction of two of the round-1 fixes:**
+
+- **Scan-event detection counts were taken AFTER overlap trimming**, so one raw `Secret`
+  finding split around two accepted higher-priority winners produced multiple fragments and
+  was counted as multiple "detections" — corrupting exactly the "what did detection find"
+  audit metric the raw-counts fix existed to provide. Fixed: `detected_counts` now
+  accumulates from the RAW findings (post span-guard, pre-resolution). Regression test
+  `scan_event_counts_raw_detections_not_overlap_fragments` uses a test-local mock detector
+  emitting one `Secret` span containing two `Email` spans — the fragment-counting bug would
+  report Secret=3; the test asserts Secret=1, Email=2.
+
+Codex flagged nothing else on the post-fix state. Stop condition: two cross-model
+fresh-context cycles complete (Fable full-verdict, then Codex on the fixed diff), the final
+cycle yielding a single already-fixed Medium — the diminishing-returns pattern the
+doubt-driven-development skill names as the stopping point. Full suite green: pipeline tests
+8 -> 9.

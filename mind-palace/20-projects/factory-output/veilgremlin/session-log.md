@@ -357,3 +357,28 @@ T07 — the T03 detectors currently ignore spans, so it can't bite yet.
 - [ ] **Wave B is complete** (T03/T04/T05/T05b/T06/T08 all merged). T07 (masking pipeline)
       is next — it wires detectors → policy → vault → audit and must honor the T07 notes
       carried forward from T05/T06/T08.
+
+## Session: T07 (masking pipeline) built under Opus, doubted by Fable + Codex, tollgate-approved
+
+**Date:** 2026-07-18
+
+### What Changed
+
+Dispatched T07 under Opus from a clean current `main` (the tollgate auto-apply finally
+worked with no base-drift surgery). Opus wired `scan()`/`mask()` through all six Wave B
+crates, honored every banked hard requirement, and executed the sanctioned contract change
+(`mask` gained `ctx: &Context`, interface-contracts.md v1 → v1.1) properly.
+
+### Decisions
+
+Full doubt-driven-development record in repo `docs/decisions.md` (2026-07-18 T07 entry).
+Two fresh-context review rounds: **Fable** (Opus authored, Fable doubted — a complete
+13-finding verdict: 2 High fixed, incl. partial-overlap trimming and the `.env`-dotfile
+fail-open; 4 Med + 4 Low fixed; 2 documented forward), then **Codex** on the post-fix diff
+(1 Medium introduced by the fixes' own interaction — Scan counts per-fragment — fixed with
+a mock-detector regression). Stop condition: diminishing returns. 199 tests / 0 failures.
+
+### Next Actions
+
+- [ ] T09 (CLI + adapter) is next — hard requirement banked: demask via `MappingRef`s
+      only, never placeholder-pattern scanning. T10/T11 after.

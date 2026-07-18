@@ -23,3 +23,17 @@ sha2 = "0.10"
 # the only edge in the normal build graph; this edge exists solely for vg-core's own test
 # binary and Cargo resolves dev-dependency cycles like this without issue.
 vg-detectors = { workspace = true }
+# T07 pipeline wiring: the end-to-end `mask`/`scan` integration tests (`tests/pipeline.rs`)
+# and the criterion bench compose the *real* Wave B implementations through `vg-core`'s own
+# trait objects. Same dev-only, resolves-fine cycle as `vg-detectors` above — none of these is
+# a normal-build dependency of `vg-core`.
+vg-parsers = { workspace = true }
+vg-vault = { workspace = true }
+vg-policy = { workspace = true }
+vg-audit = { workspace = true }
+tempfile = "3"
+criterion = "0.5"
+
+[[bench]]
+name = "mask_pipeline"
+harness = false

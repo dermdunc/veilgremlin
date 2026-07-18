@@ -88,8 +88,20 @@ Repo source-of-truth for the work queue. Tasks T01–T11 are defined in [`archit
 
 ## Later (Wave C/D)
 
-- [ ] **T07** masking pipeline wiring in `vg-core` — *Squad 0*
-- [ ] **T09** `vg` CLI + Claude Code adapter + Bedrock path + demask gate — *Squad 6*
+- [x] **T07 — done (headless), 2026-07-18.** Wired `vg-core::scan`/`mask`: parse (first
+      `can_parse`) → detect over the full buffer (spans enrichment only) → resolve overlaps
+      (specific over generic entropy `Secret`) → per-entity Mask (`vault.intern`) /
+      IrreversibleRedact / entity-Block (`[REDACTED:TYPE]`, never interned) / Pass, back-to-front;
+      one `Scan`/`Block` audit event written and returned. **Contract v1 → v1.1:** `mask` gained
+      `ctx: &Context` (`interface-contracts.md` §2 + Versioning; ADR-012). Added
+      `tests/pipeline.rs`, `tests/pipeline_latency_gate.rs`, `benches/mask_pipeline.rs` and dev-deps
+      on the four remaining Wave B crates. **Must run at PR review** (no compiler in the headless
+      session): `cargo build` (confirm `Cargo.lock` unchanged — all new deps already in-graph),
+      then `cargo test -p vg-core && cargo clippy --all-targets -- -D warnings && cargo fmt --check`.
+- [ ] **T09** `vg` CLI + Claude Code adapter + Bedrock path + demask gate — *Squad 6* — wires
+      `rehydrate`'s allowed path (still `todo!()`; its frozen signature has no vault handle, so it
+      needs its own contract look — see the T07 decisions entry). Pass the same `Context` built for
+      `scan` into `mask`.
 - [ ] **T10** seeded corpus + eval harness + Go/No-Go report — *Squad 7*
 - [ ] **T11** review + `/security-review` + milestone sign-off — *Review Agent + human*
 - [x] Decide repo visibility flip (private → public) — decided 2026-07-04: public, as part of

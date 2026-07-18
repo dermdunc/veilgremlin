@@ -960,3 +960,56 @@ T07-era fix for the 2026-07-16 entropy/phone false positives.
 ### Mind-palace updated
 
 - No (vault mutation not authorised; repo-local docs updated).
+
+## Session: T07 — wired the masking pipeline (`scan`/`mask`) + contract v1.1
+
+### What changed
+
+- **`crates/vg-core/src/api.rs`** — replaced the `scan`/`mask` `todo!()` bodies with the real
+  pipeline. `scan`: first-`can_parse` parser for spans, then every detector over the full raw
+  buffer (spans enrichment only). `mask`: classify artefact (Block short-circuits to an empty
+  pack + `AuditEvent::Block`, `blocked_artefacts = 1`, nothing interned) → detect (full buffer,
+  latency measured here) → resolve overlaps (specific entity beats generic entropy `Secret`, then
+  longer span; never double-mask) → per-entity Mask (`vault.intern`) / IrreversibleRedact /
+  entity-Block (`[REDACTED:TYPE]`, never interned) / Pass, applied back-to-front → one
+  `AuditEvent::Scan` written and returned. Added helpers `parser_spans`, `resolve_overlaps`,
+  `spans_overlap`, `specificity`, `redaction_marker`, `detector_version`. **Signature change:**
+  `mask` gained `ctx: &Context`.
+- **`crates/vg-core/Cargo.toml`** — dev-deps on `vg-parsers`, `vg-vault`, `vg-policy`, `vg-audit`,
+  `tempfile`, `criterion`; a `[[bench]]` for `mask_pipeline`.
+- **`crates/vg-core/tests/pipeline.rs`** — e2e mask over a mixed fixture through the real
+  detectors/parsers/policy-fixture/temp-keyed vault/temp audit sink: same value → same placeholder;
+  raw values excluded (via the conformance helper, incl. a per-value property loop); `.env` Block;
+  irreversible-redact never interned (`mapping_count == 0` via a fresh vault handle). Plus a `scan`
+  test.
+- **`crates/vg-core/tests/pipeline_latency_gate.rs`** — plain-`#[test]` CI latency gate for the
+  full pipeline (the `vg-detectors/tests/latency_gate.rs` pattern, looser slack for vault+audit I/O).
+- **`crates/vg-core/benches/mask_pipeline.rs`** — criterion bench for `mask` on the reference
+  artefact (compile-checked in CI).
+- **`docs/architecture/interface-contracts.md`** — bumped to **v1.1**: `mask(input, ctx, policy,
+  ns)`, inline §2 contract-change note, Versioning entry.
+- **`docs/decisions.md`** — ADR-012 row + full 2026-07-18 T07 entry (contract change rationale,
+  pipeline order, recorded assumptions, demask-owner note, validation status).
+
+### Decisions / assumptions
+
+- Contract change via the sanctioned explicit-`ctx` fix (not `Policy`-smuggling, not
+  caller-precomputed findings). `detector_version` = sorted detector ids joined `+`. Counts tally
+  handled findings only (Pass is a no-op). Non-UTF-8 handled via `from_utf8_lossy` (lossless for
+  the ASCII-shaped deterministic detectors). Pipeline emits no `DemaskDecision` — the vault owns
+  demask attribution in Phase 1. All recorded in `docs/decisions.md`.
+
+### Risks
+
+- RISK: no in-session compiler (headless dispatch; `cargo`/`rustc` approval-gated). Code written
+  for correctness by inspection against the merged implementations — **must be built/tested at PR
+  review.**
+
+### Validation status
+
+- Not compiled/run in-session. **At PR review:** `cargo build` (expect `Cargo.lock` unchanged),
+  `cargo test -p vg-core`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check`.
+
+### Mind-palace updated
+
+- No (vault mutation not authorised; repo-local docs updated).

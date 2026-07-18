@@ -1,6 +1,6 @@
-# VeilGremlin — Interface Contracts (v1, frozen)
+# VeilGremlin — Interface Contracts (v1.1, frozen)
 
-**Status:** **FROZEN as of 2026-07-15 (Task T02).** Changes now go through the contract-change protocol in `agent-factory-plan.md` §6 and bump the version below. This document was reconciled against the actual `vg-core` code at freeze time (a doubt-driven-development pass on the T02 PR found it had drifted from the implementation before either landed) — every type and trait below now matches `crates/vg-core/src/{types,traits,api}.rs` exactly, including the supporting types (§0) the original draft's illustrative signatures used but never defined.
+**Status:** **FROZEN as of 2026-07-15 (Task T02); amended to v1.1 on 2026-07-18 (Task T07 — `mask` gained `ctx: &Context`, see §2).** Changes now go through the contract-change protocol in `agent-factory-plan.md` §6 and bump the version below. This document was reconciled against the actual `vg-core` code at freeze time (a doubt-driven-development pass on the T02 PR found it had drifted from the implementation before either landed) — every type and trait below now matches `crates/vg-core/src/{types,traits,api}.rs` exactly, including the supporting types (§0) the original draft's illustrative signatures used but never defined.
 
 These are the seams that let squads build in parallel. They are illustrative Rust signatures — Squad 0 owns the canonical definitions in `vg-core`. Other squads implement against these traits and **do not** depend on each other's internals.
 
@@ -115,7 +115,8 @@ pub struct AuditEvent { /* see vg-audit contract */ }
 ```rust
 pub fn scan(input: &Input, ctx: &Context) -> Vec<Finding>;
 
-pub fn mask(input: &Input, policy: &Policy, ns: &Namespace)
+// v1.1 (2026-07-18, Task T07): `ctx: &Context` added — see the versioned note below.
+pub fn mask(input: &Input, ctx: &Context, policy: &Policy, ns: &Namespace)
     -> Result<(MaskedPack, Vec<MappingRef>, AuditEvent), MaskError>;
 
 pub fn rehydrate(masked: &str, dest: Destination, actor: &Actor)
@@ -125,6 +126,17 @@ pub fn benchmark(corpus: &Corpus, policy: &Policy) -> Metrics;
 ```
 
 `Destination` includes `LocalPatch`, `LocalTestFixture`, `LocalExplanationBuffer`, `RemoteModelPrompt`, `ObservabilitySink`. The last two are **hard-deny** in default policy; `rehydrate` returns `RehydrateDenied` for them regardless of actor.
+
+> **Contract change v1 → v1.1 (2026-07-18, Task T07) — `mask` gained `ctx: &Context`.**
+> The v1 signature `mask(input, policy, ns)` had no way to reach the detectors and parsers
+> `scan` gets via `Context` — `mask`'s whole job is to detect-then-mask, so it needs the
+> same detectors/parsers `scan` runs. Resolved via the contract-change protocol
+> (`agent-factory-plan.md` §6) with the **sanctioned** fix: an explicit
+> `mask(input, ctx, policy, ns)` parameter. Deliberately *not* done by smuggling detectors
+> into `Policy` (which would conflate "what to do" with "how to find it") or by having
+> callers pre-compute `Vec<Finding>` (which would duplicate `scan`'s logic at every call
+> site and let a caller mask a stale/hand-forged finding set). No other signature changed;
+> `scan`/`rehydrate`/`benchmark` are untouched. See `../decisions.md`'s 2026-07-18 T07 entry.
 
 ---
 
@@ -240,4 +252,5 @@ Contract: append-only; **no raw values** in any variant (refs/counts/versions on
 
 ## Versioning
 - **v1** — this document, frozen 2026-07-15 (Task T02), reconciled against the actual `vg-core` code at freeze time. See `../decisions.md`'s 2026-07-15 entry for what changed between the original draft and this frozen version (added §0 supporting types; `EntityType::Custom`; `PolicyLayers` `Path`→`PathBuf`; namespace-isolation and zeroize-cosmetic notes on `VaultStore`/`Secret`; conformance-helper coverage notes).
+- **v1.1** — 2026-07-18 (Task T07). `mask` gained a `ctx: &Context` parameter (`mask(input, ctx, policy, ns)`) so it can reach the detectors/parsers `scan` composes; nothing else changed. See §2's inline contract-change note and `../decisions.md`'s 2026-07-18 T07 entry. Downstream: no current caller existed (the CLI/adapters had not yet wired `mask`), so no call sites needed migrating — future callers pass the same `Context` they build for `scan`.
 - Increment on any breaking change to a public type/trait above. Record the bump in `../decisions.md` and notify downstream squads.

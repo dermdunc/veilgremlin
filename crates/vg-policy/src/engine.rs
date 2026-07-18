@@ -55,15 +55,11 @@ impl PolicyEngine for LayeredPolicyEngine {
 
     fn classify_artefact(&self, hint: &ArtefactHint) -> HandlingClass {
         // First match wins: file extension, then declared language, then MIME type.
-        if let Some(ext) = hint
-            .path
-            .as_ref()
-            .and_then(|p| p.extension())
-            .and_then(|e| e.to_str())
-        {
-            let ext = ext.to_ascii_lowercase();
-            if let Some(class) = self.resolved.artefact_by_extension.get(&ext) {
-                return *class;
+        if let Some(path) = hint.path.as_ref() {
+            for ext in extension_candidates(path) {
+                if let Some(class) = self.resolved.artefact_by_extension.get(&ext) {
+                    return *class;
+                }
             }
         }
         if let Some(lang) = hint.language_id.as_deref() {
@@ -143,4 +139,33 @@ impl PolicyEngine for LayeredPolicyEngine {
 fn is_hard_deny_id(dest: &DestinationId) -> bool {
     dest.0 == Destination::RemoteModelPrompt.id().0
         || dest.0 == Destination::ObservabilitySink.id().0
+}
+
+/// Extension keys to try for `by_extension` lookup, lowercased, most specific first.
+///
+/// **Why not just `Path::extension()` (T07 review, High fix):** Rust treats a leading dot
+/// as part of a dotfile's *name*, so `Path::new(".env").extension()` is `None` and
+/// `".env.local"` yields `"local"` — meaning the contract's own canonical Block example
+/// (a literal `.env` file) silently fell through to the artefact default and failed
+/// OPEN. For a dotfile we therefore also try the first segment after the leading dot
+/// (`.env` → `env`, `.env.local` → `local` then `env`), mirroring how `vg-parsers`'
+/// env parser already matches these names for exactly the same reason.
+fn extension_candidates(path: &Path) -> Vec<String> {
+    let mut out = Vec::new();
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        out.push(ext.to_ascii_lowercase());
+    }
+    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+        if let Some(rest) = name.strip_prefix('.') {
+            if let Some(first) = rest.split('.').next() {
+                if !first.is_empty() {
+                    let candidate = first.to_ascii_lowercase();
+                    if !out.contains(&candidate) {
+                        out.push(candidate);
+                    }
+                }
+            }
+        }
+    }
+    out
 }

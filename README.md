@@ -44,7 +44,7 @@ vg audit last                              # most recent audit event (refs/count
 
 Built through task T10; interface contract at v1.4; 221 tests passing.
 
-VeilGremlin runs its own Go/No-Go eval harness (`vg bench`) over a synthetic seeded corpus, and the current verdict is an honest **NO-GO on false-positive rate: 16.7%** against a `<3%` gate (entropy 13.3%, phone 40%), plus a display-collision corruption found in 1 of 3 mask→demask round-trips. Passing gates in the same run: zero raw PII leaked (11/11), secret recall 5/5, PII recall 15/15, placeholder consistency 12/12, and cold-hook end-to-end p95 of 22.44 ms under the 50 ms budget.
+VeilGremlin runs its own Go/No-Go eval harness (`vg bench`) over a synthetic seeded corpus, and the current verdict is an honest **NO-GO on false-positive rate: 16.7%** against a `<3%` gate (entropy 13.3%, phone 40%), plus a display-collision corruption found in 1 of 3 mask→demask round-trips. Passing gates in the same run: zero raw PII leaked (11/11), secret recall 5/5, PII recall 15/15, placeholder consistency 10/10, and cold-hook end-to-end p95 of 17.0 ms under the 50 ms budget.
 
 We publish that failing number on purpose. A privacy tool that measures itself against a bar and tells you it has not cleared it yet is a privacy tool you can check. The green harness reporting red product numbers is the tool working. **Next:** close the precision NO-GO (entropy and phone false positives, and collision-avoiding minting) ahead of T11 review and sign-off.
 

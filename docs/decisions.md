@@ -1873,3 +1873,137 @@ Corrected to: engine opens → the denial flows through `rehydrate` and is audit
 before; engine *cannot* open and the destination is hard-deny → still DENIED (stderr
 says "denial unaudited"), never an error. Both properties now hold at once. CLI suite
 re-verified green.
+
+## 2026-07-18 — T10: eval harness (`vg-bench`) wired; contract v1.4; the Go/No-Go gate says NO-GO — and that is the deliverable working
+
+**Context.** T10 dispatched under Opus from clean main (17b27d5, post spec-expansion PR
+#24). The dispatch died with `API Error: Connection closed mid-response` — the same
+failure mode #4 as T09 — but left ~1,300 lines of `vg-bench` (corpus loader, harness,
+report, renderer, eval bench), the `vg bench` CLI subcommand (Go/exit-0, NoGo-or-
+Incomplete/exit-1), a seeded 11-sample labelled corpus, and a properly documented
+contract change. Rescued in place per the T02/T09 precedent; rescue delta was small:
+`cargo fmt` (never ran), one `assert_eq!(…, true)` clippy lint, wiring the dead
+`DetectorFp::rate` method into the renderer, and this documentation layer.
+
+**Contract v1.4 (via protocol, Opus-authored):** `benchmark(corpus, ctx, policy)` — the
+frozen signature had no way to reach detectors/parsers, the same gap and same sanctioned
+fix as `mask` at v1.1. `Metrics` unchanged. interface-contracts.md amended.
+
+**The result that matters — the harness's first verdict is NO-GO, honestly:**
+- **false-positive-rate 16.7% vs the <3% gate.** The banked Wave B measurement finally
+  has numbers: entropy 13.3% FP, **phone 40% FP** (2 FP / 5 findings). The 2026-07-16
+  "hybrid: detector patch now, T10 stays the gate" decision is now quantified — the
+  patch was not enough, and T10 is doing exactly the gating it was kept for.
+- **placeholder-consistency 66.7% (8/12) vs ≥99%.**
+- **Display-collision incidence 1/3 samples corrupted** (mask→demask round-trip) — the
+  T09 doubt-round residual is real on realistic slices; report recommends
+  collision-avoiding minting at intern time as a T11 decision, now with data.
+- Passing: zero-raw-PII 11/11 (the §1 invariant property test), secret recall 5/5, PII
+  recall 15/15, cold-hook e2e p95 22.44 ms (< 50 ms gate; validates the runbook's "tens
+  of ms"), in-process detect p95 ~12 ms.
+- Dead-config detection confirmed `artefacts.by_language [dotenv]` unreachable with an
+  argued wiring constraint (classify-before-parse is mandatory), fix-or-drop routed to
+  T11; dotenv-without-hint residual quantified (1 value only an artefact Block would
+  catch).
+
+The acceptance criterion was "thresholds evaluated to an explicit verdict", not "verdict
+must be Go". A green harness reporting red product numbers is the tool working.
+
+**Validation:** build, `clippy -D warnings`, `fmt --check`, tests — **221 / 0 failures**
+in the worktree; `vg bench --no-hook` exits 1 on NO-GO as specified; report prints
+refs/counts only (no raw corpus values observed in output).
+
+## 2026-07-19 — T10 doubt-pass round 1 (Fable, fresh context): the NO-GO was right for the wrong reasons
+
+**Verdict: 4 High / 7 Med / 6 Low**, measurement-integrity focused; the reviewer compiled
+and ran the harness itself. Headline: one failing gate was honest (FP rate), the other
+was fabricated by the harness's own probe; two passing gates were weaker than they looked.
+
+**Fixed (re-verified against the code, then against a live run):**
+- **H1** — the placeholder-consistency probe joined values with `|`, which is legal RFC-5322
+  atext: the email detector matched *through* the separator, split the probe into two
+  different raw values, and manufactured the 66.7% "instability". Probe now uses a newline;
+  the gate reads **100% (12/12)**. The corpus will always contain emails — this would have
+  been a permanent false NO-GO.
+- **H2** — `measure_cold_hook` never checked the spawned hook succeeded; a future arg
+  rename would yield ~1 ms usage-error timings and a glowing false p95. Now requires
+  exit 0 + a masked `updatedInput` transform per invocation, else the measurement errors.
+- **H3** — zero-raw-PII now runs the mandated
+  `conformance::assert_masked_pack_excludes_raw_values` (covers `policy_version` and every
+  `bindings[].display`, not just `text`) under a silenced panic hook so a violation can
+  never print the raw value. Residual (documented): both checks are full-value
+  containment; a partially-masked value's remainder is not caught — noted for T11.
+- **H4/M4** — new structural-guards measurement + gate: the artefact-block sample now
+  asserts `blocked_artefacts > 0` (previously it passed every gate vacuously even if
+  `classify_artefact` died), and the json-payload slice's "masked output still parses as
+  JSON" is measured instead of asserted. 2/2 PASS live.
+- **M5** — dead-branch check relabelled as a STATIC check of the shipped constant with a
+  retire-at-T11 note (it is a canned claim, not pipeline introspection).
+- **M6/L5** — display-collision slice: irreversibly-redacted content now rejected at
+  measurement time (round-trip infidelity is only a collision signal on reversible-only
+  samples), each result records whether a decoy was actually minted, and the slice errors
+  if NO decoy matches a minted display (mint-format drift would otherwise read as a false
+  "clean" forever).
+- **M7 (partial)** — the documented 25 ms in-process budget is now a real gate
+  (`in-process-detect-p95`, always measurable, 6.9 ms PASS); `--no-hook` runs get latency
+  gating instead of none.
+- **L1** — `--hook-samples 0` is rejected instead of silently running once.
+- **L2** — `spans_overlap` made `pub` in vg-core (additive, non-contract); the harness's
+  private duplicate deleted — gated and banked scorers can no longer drift.
+- **L4** — `Metrics.p95_latency_us` is now ALWAYS the in-process figure; the cold-hook e2e
+  p95 lives in its own struct and gate. A frozen field no longer changes meaning with a
+  CLI flag.
+
+**Accepted trade-offs (documented, T11-routed):** M1 (per-detector FP denominators are
+corpus-composition-sensitive; needs benign-slice-only denominators + a bigger corpus),
+M2 (small-N gate resolution — the <3% FP gate needs ≥~34 benign findings to be
+distinguishable; rendered as a caveat line in the report), M3 (typed vs untyped FP
+definitions coexist; now stated in the report caveat rather than silently disagreeing),
+L3 (transitive error-Display redaction assumption), L6 (repeated-value label inflation —
+unguarded corpus-author footgun, noted in corpus README territory for T11).
+
+**Post-fix state:** verdict still **NO-GO** — now for exactly one honest reason: overall
+FP 16.7% (entropy on a commit SHA, phone on ISBN/zip — real product false positives).
+Full run with cold hook: hot-path 14.9 ms PASS. 221 tests / 0 failures; clippy
+`-D warnings` + fmt clean.
+
+## 2026-07-19 — T10 doubt-pass round 2 (Codex, cross-model): three vacuous-pass holes in the round-1 fixes
+
+**Verdict: 5 High / 3 Med / 1 Low.** Fourth consecutive review cycle in which fixes hid
+fresh bugs only a cold pass caught. Reconciliation:
+
+- **H (FP dilution) — FIXED:** per-detector FP rates were corpus-wide and dilutable by
+  adding true positives elsewhere. `DetectorFp` now also carries `benign_slice_fp` — FPs
+  on the benign-lookalike slice only, an un-dilutable numerator (any finding there is an
+  FP by construction) — rendered beside the rate. Live: entropy 1, phone 2.
+- **H (empty collision slice) — FIXED:** an empty `display-collision` slice now errors
+  ("corpus lost its collision samples") instead of printing a vacuous `0 of 0`.
+- **H (redactions inflating consistency) — FIXED:** binding-less probe values (irreversible
+  classes collapsing to identical `[REDACTED:*]` markers) no longer count toward
+  placeholder stability; stability additionally requires the probe halves to BE a display
+  the pack minted. Gate now honestly 10/10 (was 12/12 with two vacuous entries).
+- **H (substring transform check) — FIXED:** cold-hook validity now PARSES the stdout
+  JSON, requires `hookSpecificOutput.updatedInput`, and asserts the raw payload value is
+  absent from it — a regression emitting well-shaped-but-unmasked JSON is rejected.
+- **H (one-legged structural gate) — FIXED:** the gate requires BOTH mechanisms present
+  (artefact-block-fires AND masked-json-still-parses), not "all present checks pass".
+- **M (recall on raw scan) — TRADE-OFF, documented:** recall is measured pre-overlap-
+  resolution; a typed finding dropped by resolution still masks its bytes, so value-level
+  protection is covered by the zero-raw-PII gate — typed recall is deliberately the
+  detector-level number. Revisit if resolution semantics change.
+- **M (in-process gate times scan only) — FIXED (label):** criterion renamed to
+  "scan, in-process"; the mask/intern path is covered by the cold-hook e2e gate.
+- **M (zero-raw filtered to protected types) — NOISE with a note:** a default-policy
+  regression to `Pass` would indeed skip that value here, but the same regression fails
+  the recall gates (`caught` requires `is_protected`), so the report still goes NO-GO —
+  defence in depth, not a gap. Noted rather than changed.
+- **L (example.co.uk) — FIXED:** not RFC-2606; corpus value replaced with
+  `a.smith@support.example.org`.
+
+**STOP (named):** two full adversarial cycles (Fable fresh-context, Codex cross-model)
+plus reconciliation; round 2's Highs were all seams of round-1 fixes and are closed;
+remaining items are documented trade-offs with T11 owners. Cycle 3 is the human tollgate
++ T11 review. **Post-fix state:** verdict NO-GO for exactly one honest reason (FP rate
+16.7%: entropy on a commit SHA, phone on ISBN/zip — T11's inheritance, now with
+un-dilutable numerators); all other gates PASS incl. cold-hook e2e 17.0 ms. **221 tests /
+0 failures; clippy `-D warnings` + fmt clean.**

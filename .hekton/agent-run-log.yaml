@@ -592,3 +592,31 @@ agent_runs:
       - "Documented Phase-1 trade-offs routed to T10/T11: ancestor state-dir trust; demask is attribution not authentication (wrapped agent can demask); pack plaintext accumulation (self-gitignore mitigates commits; TTL/purge pending); exact display-collision residual (collision-avoiding minting candidate); Bash .env-write bypasses artefact Block (no file_path hint)."
     next_actions:
       - "Human tollgate (gateway-review.sh --task T09; ledger repaired failed -> interrupted), then land, then the human UX-invisibility session per docs/runbook-hooks.md; T10 eval harness next."
+  - id: RUN-0019
+    date: 2026-07-19
+    agent: "opus (headless dispatch, died mid-response, rescued in place) + fable (rescue + docs)"
+    role: "Build Agent"
+    intent: "T10: vg-bench eval harness + seeded labelled corpus + Go/No-Go report + vg bench CLI. Contract v1.4 (benchmark gained ctx, same sanctioned fix as mask at v1.1). First verdict: NO-GO — the six banked measurements quantified (phone 40% FP, entropy 13.3%, consistency 66.7%, collision corruption 1/3 real; zero-raw-PII/recall/latency gates pass)."
+    autonomy_level: 3
+    approvals:
+      required: true
+      status: pending
+      approver: coderturtle
+    files_touched:
+      - "crates/vg-bench/src/{lib,corpus,report,render}.rs"
+      - "crates/vg-bench/benches/eval_corpus.rs"
+      - "corpus/seeded/{manifest.json,README.md}"
+      - "crates/vg-cli/src/main.rs"
+      - "crates/vg-core/src/api.rs"
+      - "crates/vg-adapters-claude/src/{lib,runtime}.rs"
+      - "docs/architecture/interface-contracts.md"
+      - "docs/decisions.md"
+    links:
+      - "docs/decisions.md"
+      - "docs/session-log.md"
+    validation:
+      - "cargo build && clippy -D warnings && fmt --check && cargo test --workspace: PASS -- 221 tests / 0 failures in the T10 worktree; vg bench --no-hook exits 1 on NO-GO as specified"
+    risks:
+      - "The NO-GO is a product truth, not a harness bug: detector FP rates and placeholder consistency fail their gates; display-collision corruption confirmed. T11 owns the decisions (detector thresholds, collision-avoiding minting, by_language fix-or-drop)."
+    next_actions:
+      - "Fable doubt round on the T10 diff, Codex cross-model offer, tollgate, land; T11 is the final gate."

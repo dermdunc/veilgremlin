@@ -27,8 +27,8 @@ mod types;
 pub mod conformance;
 
 pub use api::{
-    benchmark, mask, rehydrate, scan, Actor, Context, Corpus, CorpusSample, Destination,
-    DestinationId, Input, Metrics, Policy,
+    benchmark, mask, rehydrate, scan, spans_overlap, Actor, Context, Corpus, CorpusSample,
+    Destination, DestinationId, Input, Metrics, Policy,
 };
 pub use audit::AuditEvent;
 pub use error::{AuditError, MaskError, PolicyError, RehydrateDenied, VaultError};

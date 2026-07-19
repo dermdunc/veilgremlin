@@ -1,0 +1,126 @@
+{
+  "version": 1,
+  "samples": [
+    {
+      "name": "incident-log-multi-entity",
+      "description": "The Phase-1 anchor artefact: an incident log line mixing customer email, IBAN, internal IP, a second email, a phone number, a sort code, and a rotation token on adjacent lines. Exercises multi-entity detection and stable placeholders.",
+      "artefact": { "path": "incident.log" },
+      "content": "2026-07-18T09:14:02Z ERROR customer jane.doe@example.com (acct GB29 NWBK 6016 1331 9268 19) failed login from 192.168.1.42\nescalated to ops@example.org callback +44 20 7946 0958 sort code 12-34-56\nsession token Zx9Kq2Lm7Pw4Rt6Yv1Bn8Fs3Hd5Jc0Ga4We flagged for rotation\n",
+      "expected": [
+        { "type": "Email", "value": "jane.doe@example.com" },
+        { "type": "Iban", "value": "GB29 NWBK 6016 1331 9268 19" },
+        { "type": "InternalIp", "value": "192.168.1.42" },
+        { "type": "Email", "value": "ops@example.org" },
+        { "type": "Phone", "value": "+44 20 7946 0958" },
+        { "type": "SortCode", "value": "12-34-56" },
+        { "type": "Secret", "value": "Zx9Kq2Lm7Pw4Rt6Yv1Bn8Fs3Hd5Jc0Ga4We" }
+      ],
+      "slices": ["multi-entity"]
+    },
+    {
+      "name": "yaml-hash-in-quoted-value",
+      "description": "T08 under-spanning reproducer #1: a `#` inside a quoted YAML value makes the parser mis-span the trailing text as a comment. Because detection scans the FULL raw buffer (spans are enrichment-only), the email after the `#` is still caught — the property T07 had to preserve.",
+      "artefact": { "path": "config.yaml" },
+      "content": "incident:\n  note: \"customer #escalation contact a.smith@support.example.org urgent\"\n  replica_host: 10.0.0.5\n",
+      "expected": [
+        { "type": "Email", "value": "a.smith@support.example.org" },
+        { "type": "InternalIp", "value": "10.0.0.5" }
+      ],
+      "slices": ["yaml-underspan"]
+    },
+    {
+      "name": "yaml-single-quoted-flow-scalar",
+      "description": "T08 under-spanning reproducer #2: a single-quoted YAML flow scalar the JSON-tokenizer fallback under-spans. Full-buffer detection still flags the high-entropy token inside it.",
+      "artefact": { "path": "settings.yaml" },
+      "content": "auth: {token: 'Zx9Kq2Lm7Pw4Rt6Yv1Bn8Fs3Hd5Jc0Ga4We', region: 'eu-west-2'}\n",
+      "expected": [
+        { "type": "Secret", "value": "Zx9Kq2Lm7Pw4Rt6Yv1Bn8Fs3Hd5Jc0Ga4We" }
+      ],
+      "slices": ["yaml-underspan"]
+    },
+    {
+      "name": "dotfile-env-blocked",
+      "description": "A `.env` dotfile WITH its path hint — the artefact-level Block path. `mask` drops the whole content; detection still finds the secrets (recall is over detection, block is the extra guard). The bare-dotfile name is the regression that matters: `Path::new(\".env\").extension()` is None.",
+      "artefact": { "path": ".env" },
+      "content": "# production secrets - do not commit\nexport API_TOKEN=Zx9Kq2Lm7Pw4Rt6Yv1Bn8Fs3Hd5Jc0Ga4We\nDB_PASSWORD=Kp7Zx2Lm9Qw4Rt6Yv1Bn8Cs3Hd5Jc0Ga4We\nSMTP_USER=ops@example.org\n",
+      "expected": [
+        { "type": "Secret", "value": "Zx9Kq2Lm7Pw4Rt6Yv1Bn8Fs3Hd5Jc0Ga4We" },
+        { "type": "Secret", "value": "Kp7Zx2Lm9Qw4Rt6Yv1Bn8Cs3Hd5Jc0Ga4We" },
+        { "type": "Email", "value": "ops@example.org" }
+      ],
+      "slices": ["dotfile", "artefact-block"]
+    },
+    {
+      "name": "dotenv-shaped-no-path-hint",
+      "description": "The T09 known limit: dotenv-shaped content with NO path hint (a `Bash echo X > .env` bypasses the artefact Block). Only entity detection protects it here. The high-entropy token is caught; the short low-entropy password and the structured licence key are the residual that ONLY the artefact Block would have caught.",
+      "artefact": null,
+      "content": "API_TOKEN=Zx9Kq2Lm7Pw4Rt6Yv1Bn8Fs3Hd5Jc0Ga4We\nDB_PASSWORD=hunter2\nADMIN_USER=ops@example.org\nLICENSE_KEY=ACME-2026-DEMO-KEY\n",
+      "expected": [
+        { "type": "Secret", "value": "Zx9Kq2Lm7Pw4Rt6Yv1Bn8Fs3Hd5Jc0Ga4We" },
+        { "type": "Email", "value": "ops@example.org" }
+      ],
+      "residual_secrets": ["hunter2", "ACME-2026-DEMO-KEY"],
+      "slices": ["dotenv-no-hint"]
+    },
+    {
+      "name": "json-tool-payload",
+      "description": "A Write-tool JSON payload whose masking must survive the v1.3 same_shape guard (string values only). Entities live inside the `content` string value; masking substitutes in place and the JSON stays shape-identical.",
+      "artefact": { "path": "tool_call.json" },
+      "content": "{\"tool\":\"Write\",\"file_path\":\"/srv/app/notes.txt\",\"content\":\"email jane.doe@example.com or call +1-415-555-2671\"}",
+      "expected": [
+        { "type": "Email", "value": "jane.doe@example.com" },
+        { "type": "Phone", "value": "+1-415-555-2671" }
+      ],
+      "slices": ["json-payload"]
+    },
+    {
+      "name": "overlapping-secret-email",
+      "description": "A high-entropy credential glued to an email by an `@` — one entropy `Secret` span overlaps one `Email` span over the same bytes. Exercises resolve_overlaps: the more-specific Email wins, no detected byte leaks.",
+      "artefact": { "path": "app.log" },
+      "content": "leaked credential Zx9Kq2Lm7Pw4Rt6Yv1Bn8Fs3Hd5Jc0Ga4We@ops.example.com found in the log\n",
+      "expected": [
+        { "type": "Email", "value": "Zx9Kq2Lm7Pw4Rt6Yv1Bn8Fs3Hd5Jc0Ga4We@ops.example.com" }
+      ],
+      "slices": ["multi-entity", "overlap"]
+    },
+    {
+      "name": "benign-lookalikes",
+      "description": "Benign engineering text shaped like sensitive values: a git commit SHA (entropy look-alike), an ISBN and a zip+4 (phone look-alikes), an EMAIL_0015-style near-collision placeholder, a version string, an ISO date, and structured run-IDs/paths. Nothing here is sensitive — every finding is a false positive, measured per detector.",
+      "artefact": { "path": "notes.md" },
+      "content": "commit 17b27d5c8f9e2a1b3d4c5e6f7a8b9c0d1e2f3a4b merged on 2026-07-18\nnear-collision placeholder EMAIL_0015 referenced in ticket\nISBN 978-3-16-148410-0 and zip 12345-6789 in the shipping record\nrelease v2.14.3 rolled out over 12 days\nrun-20260718-EG-012 completed; see scripts/gateway-run.sh for details\n",
+      "expected": [],
+      "slices": ["benign-lookalike"]
+    },
+    {
+      "name": "display-collision-mint",
+      "description": "Display-collision (T09 doubt round): raw text contains the literal `EMAIL_001` AND a real email that the pack mints as `EMAIL_001`. On demask, the coincidental literal is also substituted — round-trip corruption. Incidence measured by mask->demask round-trip inequality.",
+      "artefact": { "path": "thread.log" },
+      "content": "forward jane.doe@example.com to the team, and note the placeholder EMAIL_001 stays literal\n",
+      "expected": [
+        { "type": "Email", "value": "jane.doe@example.com" }
+      ],
+      "decoys": ["EMAIL_001"],
+      "slices": ["display-collision"]
+    },
+    {
+      "name": "display-collision-spoof",
+      "description": "A spoofed `EMAIL_999` the pack never mints (only one email -> only EMAIL_001 minted). On demask, EMAIL_999 has no binding and is left untouched — validates that a placeholder-shaped string the pack never minted survives.",
+      "artefact": { "path": "thread.log" },
+      "content": "forward jane.doe@example.com but ignore the spoofed marker EMAIL_999 in the body\n",
+      "expected": [
+        { "type": "Email", "value": "jane.doe@example.com" }
+      ],
+      "decoys": ["EMAIL_999"],
+      "slices": ["display-collision"]
+    },
+    {
+      "name": "display-collision-no-mint",
+      "description": "Placeholder-shaped literals with NO real address present, so the pack mints nothing. Masking leaves the text unchanged and demask has no bindings — the literals survive. The 'without the pack minting the same display' half of the collision measurement.",
+      "artefact": { "path": "examples.md" },
+      "content": "the doc literally mentions EMAIL_001 and EMAIL_002 as example placeholders, no real addresses here\n",
+      "expected": [],
+      "decoys": ["EMAIL_001", "EMAIL_002"],
+      "slices": ["display-collision"]
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # VeilGremlin — Interface Contracts (v1.3, frozen)
 
-**Status:** **FROZEN as of 2026-07-15 (Task T02); amended to v1.1 on 2026-07-18 (Task T07 — `mask` gained `ctx: &Context`, see §2); to v1.2 and v1.3 on 2026-07-18 (Task T09 — `MaskedPack` gained `bindings`, `rehydrate` re-signed, §8 hook protocol corrected to the platform's real semantics; see §1, §2, §8).** Changes now go through the contract-change protocol in `agent-factory-plan.md` §6 and bump the version below. This document was reconciled against the actual `vg-core` code at freeze time (a doubt-driven-development pass on the T02 PR found it had drifted from the implementation before either landed) — every type and trait below now matches `crates/vg-core/src/{types,traits,api}.rs` exactly, including the supporting types (§0) the original draft's illustrative signatures used but never defined.
+**Status:** **FROZEN as of 2026-07-15 (Task T02); amended to v1.1 on 2026-07-18 (Task T07 — `mask` gained `ctx: &Context`, see §2); to v1.2 and v1.3 on 2026-07-18 (Task T09 — `MaskedPack` gained `bindings`, `rehydrate` re-signed, §8 hook protocol corrected to the platform's real semantics; see §1, §2, §8); to v1.4 on 2026-07-18 (Task T10 — `benchmark` gained `ctx: &Context`, see §2).** Changes now go through the contract-change protocol in `agent-factory-plan.md` §6 and bump the version below. This document was reconciled against the actual `vg-core` code at freeze time (a doubt-driven-development pass on the T02 PR found it had drifted from the implementation before either landed) — every type and trait below now matches `crates/vg-core/src/{types,traits,api}.rs` exactly, including the supporting types (§0) the original draft's illustrative signatures used but never defined.
 
 These are the seams that let squads build in parallel. They are illustrative Rust signatures — Squad 0 owns the canonical definitions in `vg-core`. Other squads implement against these traits and **do not** depend on each other's internals.
 
@@ -132,7 +132,8 @@ pub fn rehydrate(pack: &MaskedPack, policy: &Policy, ns: &Namespace,
                  dest: Destination, actor: &Actor)
     -> Result<String, RehydrateDenied>;
 
-pub fn benchmark(corpus: &Corpus, policy: &Policy) -> Metrics;
+// v1.4 (2026-07-18, Task T10): gained `ctx: &Context` — see the versioned note below.
+pub fn benchmark(corpus: &Corpus, ctx: &Context, policy: &Policy) -> Metrics;
 ```
 
 `Destination` includes `LocalPatch`, `LocalTestFixture`, `LocalExplanationBuffer`, `RemoteModelPrompt`, `ObservabilitySink`. The last two are **hard-deny** in default policy; `rehydrate` returns `RehydrateDenied` for them regardless of actor.
@@ -159,6 +160,16 @@ pub fn benchmark(corpus: &Corpus, policy: &Policy) -> Metrics;
 > (b) `rehydrate(pack, policy, ns, dest, actor)`, keeping the hard-deny check **first**,
 > substitution only via pack-minted displays, longest-display-first. Downstream: no
 > pre-T09 caller existed. See `../decisions.md`'s 2026-07-18 T09 entry.
+
+> **Contract change v1.3 → v1.4 (2026-07-18, Task T10) — `benchmark` gained `ctx: &Context`.**
+> The frozen `benchmark(corpus, policy)` had no channel to the detectors/parsers it must run
+> to score a corpus — the identical gap `mask` hit at T07. Resolved the same sanctioned way:
+> an explicit `benchmark(corpus, ctx, policy)` parameter, **not** smuggling detectors into
+> `Policy` nor pre-scoring findings into `Corpus`. The frozen `Metrics` shape is **unchanged**
+> — the six banked richer measurements T10 owns (per-detector FP rates, zero-raw-PII property,
+> display-collision incidence, dotenv-no-hint entity recall, cold-hook e2e p95, dead-policy-
+> branch detection) live in `vg-bench`'s report layer, never as new `Metrics` fields.
+> Downstream: no pre-T10 caller existed. See `../decisions.md`'s 2026-07-18 T10 entry.
 
 ---
 
@@ -280,4 +291,5 @@ Contract: append-only; **no raw values** in any variant (refs/counts/versions on
 - **v1.1** — 2026-07-18 (Task T07). `mask` gained a `ctx: &Context` parameter (`mask(input, ctx, policy, ns)`) so it can reach the detectors/parsers `scan` composes; nothing else changed. See §2's inline contract-change note and `../decisions.md`'s 2026-07-18 T07 entry. Downstream: no current caller existed (the CLI/adapters had not yet wired `mask`), so no call sites needed migrating — future callers pass the same `Context` they build for `scan`.
 - **v1.2** — 2026-07-18 (Task T09). `MaskedPack` gained `bindings: Vec<PlaceholderBinding>` (additive); `rehydrate` re-signed to `rehydrate(pack, policy, ns, dest, actor)` with the hard-deny gate kept first and substitution only via pack-minted displays. See §1/§2 inline notes and `../decisions.md`'s 2026-07-18 T09 entry.
 - **v1.3** — 2026-07-18 (Task T09 doubt-pass). §8's hook exit-code scheme corrected to the platform's real semantics: transform = exit 0 + JSON (`updatedInput` / `updatedToolOutput` / `decision:block`-with-masked-resubmit), block = exit 2. The frozen `0/2/1` scheme was inverted and failed open. No `vg-core` type changed; this is an adapter-boundary correction.
+- **v1.4** — 2026-07-18 (Task T10). `benchmark` gained a `ctx: &Context` parameter (`benchmark(corpus, ctx, policy)`) so the eval harness can reach the detectors/parsers it scores the corpus against — the same gap and same sanctioned fix as `mask` at v1.1. `Metrics` unchanged. See §2's inline contract-change note and `../decisions.md`'s 2026-07-18 T10 entry. Downstream: no current caller existed.
 - Increment on any breaking change to a public type/trait above. Record the bump in `../decisions.md` and notify downstream squads.

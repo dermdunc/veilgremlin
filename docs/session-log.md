@@ -1053,3 +1053,18 @@ write blocked exit 2.
 ### Mind-palace updated
 
 - No (vault mutation not authorised; repo-local docs updated).
+
+## Session: T10 — eval harness built (dispatch died mid-response, rescued); NO-GO verdict recorded
+
+**Date:** 2026-07-18/19
+
+Dispatch (Opus) died with connection-drop failure mode #4 after authoring a near-complete
+`vg-bench` (~1,300 lines, compiled first try). Rescue: fmt, one clippy lint, renderer
+wiring, docs layer. Contract v1.4 (`benchmark` gained `ctx`) via protocol. First harness
+run: **NO-GO** — overall FP 16.7% (entropy 13.3%, phone 40%), placeholder-consistency
+66.7%, display-collision corruption confirmed 1/3; zero-raw-PII, recalls, and latency
+gates all pass. Full detail in decisions.md. Validation: 221 tests / 0 failures; clippy
+-D warnings + fmt clean. Doubt rounds next (Fable, then Codex offer), then tollgate.
+
+### Mind-palace updated
+- No (vault mutation not authorised).

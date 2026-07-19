@@ -4,17 +4,35 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Criterion bench harness + Go/No-Go eval report for VeilGremlin's hot path."
+description = "Criterion bench harness + labelled eval corpus + Go/No-Go report for VeilGremlin."
 
 [lints]
 workspace = true
 
 [dependencies]
 vg-core = { workspace = true }
+# The eval harness scores the corpus through the SAME real pipeline the product runs, so it
+# composes every implementing crate as a normal dependency (unlike vg-core, which only reaches
+# them as trait objects). No new external crate — all are workspace members already in the lock.
+vg-detectors = { workspace = true }
+vg-parsers = { workspace = true }
+vg-policy = { workspace = true }
+vg-vault = { workspace = true }
+vg-audit = { workspace = true }
+# For the shipped default policy (single source of truth) reused by the harness, and the cold
+# `vg hook` latency measurement's state-dir/key seam constants.
+vg-adapters-claude = { workspace = true }
+# Manifest parsing (labelled corpus) + the dead-policy-branch inspection. Both already in the
+# workspace lock (serde via vg-policy, serde_json via vg-cli/vg-policy).
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The harness runs in an isolated throwaway state dir so benchmarking never touches a real
+# vault/audit log. Already in the lock (dev-dep of vg-core/vg-cli).
+tempfile = "3"
 
 [dev-dependencies]
 criterion = "0.5"
 
 [[bench]]
-name = "placeholder"
+name = "eval_corpus"
 harness = false

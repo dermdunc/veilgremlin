@@ -38,7 +38,10 @@ pub const VAULT_KEY_ENV: &str = "VG_VAULT_KEY_HEX";
 /// by default, secrets/keys irreversibly redacted, `.env`/`.pem` artefacts blocked, and the
 /// two hard-deny destinations pinned masked-only. Operators edit this file (or add
 /// `repo.policy.json`/`session.policy.json` overlays) to tune policy.
-const DEFAULT_GLOBAL_POLICY: &str = r#"{
+///
+/// Public so the `vg-bench` eval harness can score the corpus against the *exact* default
+/// policy the product ships, from a single source of truth (no duplicated JSON to drift).
+pub const DEFAULT_GLOBAL_POLICY: &str = r#"{
   "version": "veilgremlin-default-global-v1",
   "signature": "phase1-unverified-placeholder",
   "entities": {

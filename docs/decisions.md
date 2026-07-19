@@ -2071,7 +2071,7 @@ destination. The cryptographic vault, the detectors, the pipeline, and the **too
 
 Neither is a tweak. Both are resolved by the architecture the contract already deferred: a
 **local masking proxy** that intercepts the actual request to the model endpoint, masks the
-entire payload via the vault, and **de-masks the response** — invisible to the user — with a
+entire payload via the vault, and **demasks the response** — invisible to the user — with a
 long-lived daemon holding the vault key once (which also removes the keychain friction).
 Without it, VeilGremlin *proves the mechanism* but does not *solve* the governance / risk /
 privacy problem it exists for.
@@ -2083,7 +2083,7 @@ ship** — that the integration does not deliver the value. Catching this here, 
 production, is the entire point of the gate.
 
 ### Reprioritised roadmap (supersedes the T10/T11 backlog order)
-1. **Local masking proxy** (egress interception + response de-masking) + the daemon that
+1. **Local masking proxy** (egress interception + response demasking) + the daemon that
    holds the vault key. THE next milestone — the thing that makes the product real.
 2. FP-rate precision + corpus growth (the eval NO-GO).
 3. Collision-avoiding minting; vault TTL/purge; the rest of the T11 hardening backlog.

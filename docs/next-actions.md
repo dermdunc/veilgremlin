@@ -17,7 +17,7 @@ demask logic, vault, detectors, pipeline, and tool-path masking are all validate
 ## Now — the next milestone (supersedes the prior sign-off blocker order)
 
 - [ ] **Local masking proxy + daemon.** Intercept the actual request to the model endpoint,
-      mask the entire assembled payload (prompt + context) via the vault, de-mask the response —
+      mask the entire assembled payload (prompt + context) via the vault, demask the response —
       invisible to the user; a long-lived daemon holds the vault key once (removing the keychain
       friction). This is what turns the proven mechanism into a product that actually solves the
       governance/risk/privacy problem. The already-deferred "route masked request to Bedrock" /

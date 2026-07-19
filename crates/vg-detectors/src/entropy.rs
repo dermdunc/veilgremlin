@@ -83,9 +83,9 @@ fn is_token_byte(b: u8) -> bool {
 /// (`run-20260608-EG-012`) uniformly, rather than an unstructured secret.
 ///
 /// **2026-07-16 census finding, corrected after measurement:** an initial version of
-/// this exclusion assumed Hekton's own `run-YYYYMMDD-EG-NNN` run IDs were the dominant
+/// this exclusion assumed structured internal run IDs were the dominant
 /// false-positive shape. Measuring the *actual* matched tokens (via a temporary local
-/// debug print against real `engine-gateway-lab` content, never committed) showed that
+/// debug print against real internal-tooling content, never committed) showed that
 /// assumption was wrong: on that specific fixed content, the fix only removed 1 of 1849
 /// entropy findings. The real dominant classes were file paths and
 /// snake_case/kebab-case code identifiers -- `is_token_byte` treats `/`, `.`, and `_` as
@@ -256,8 +256,8 @@ mod tests {
         // Lenient params so this test proves the shape-exclusion fires, independent of
         // whether the default 3.5 threshold happens to catch these particular tokens.
         // These are the real dominant false-positive shapes found by the 2026-07-16
-        // census against engine-gateway-lab's actual content (file paths and
-        // snake_case/kebab-case identifiers), not the Hekton-run-ID shape an earlier,
+        // census against real internal-tooling content (file paths and
+        // snake_case/kebab-case identifiers), not the structured-run-ID shape an earlier,
         // measurement-corrected version of this exclusion assumed was dominant.
         let lenient = EntropyDetector::new(10, 0.5);
         for id in [

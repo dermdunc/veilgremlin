@@ -5,13 +5,13 @@
 Reviewed readiness to dispatch T01/T02 for real through `agentic-control-tower`'s task-DAG
 orchestrator. Confirmed the DAG (`dag status`) shows both ready and the earlier GitHub-push
 blocker was already resolved (an SSH host-alias fix, not just the HTTPS workaround). Found a new
-blocker — no Rust toolchain on this machine — and, separately, coderturtle decided to hold off
+blocker — no Rust toolchain on this machine — and, separately, the owner decided to hold off
 starting real VeilGremlin build work until the wider Hekton factory-readiness pass is further
 along. No build code was written and nothing was dispatched this session.
 
-Separately, coderturtle determined VeilGremlin's GitHub account was wrong: it's an enterprise
-architecture/governance/risk tool, not agentic-engineering tooling, so it belongs under
-`dermdunc` (public), not `coderturtle` (private). Executed that move end-to-end.
+Separately, the owner determined VeilGremlin's GitHub home was wrong: it's an enterprise
+architecture/governance/risk tool, not agentic-engineering tooling, so it belongs under the
+`dermdunc` (public) account. Executed that move end-to-end.
 
 ### Changed / created files
 
@@ -25,7 +25,7 @@ architecture/governance/risk tool, not agentic-engineering tooling, so it belong
 - `docs/next-actions.md` — GitHub-push item confirmed resolved; Rust-toolchain gap logged;
   T01/T02 dispatch re-deferred with reason; visibility-flip and SSH-key items closed as
   decided/superseded.
-- `docs/risks.md` — RISK-0010 closed as moot (repo no longer pushes as coderturtle at all).
+- `docs/risks.md` — RISK-0010 closed as moot (the early git-remote auth mismatch no longer applies).
 - `docs/project-walkthrough.md` — dated update entry + open-question line resolved.
 
 ### Decisions Made
@@ -33,7 +33,7 @@ architecture/governance/risk tool, not agentic-engineering tooling, so it belong
 - Dispatch T01/T02 deliberately deferred again — not a technical blocker this time, a human call
   to wait for the wider Hekton readiness pass. The newly-found Rust-toolchain gap is logged but
   intentionally not fixed yet (no point installing a toolchain for a build that isn't starting today).
-- GitHub repo transferred `coderturtle/veilgremlin` → `dermdunc/veilgremlin` and made public in
+- GitHub repo settled under `dermdunc/veilgremlin` and made public in
   the same session, ahead of any real code existing — the safer order (nothing sensitive to leak
   by going public early, given zero implementation exists yet).
 
@@ -84,18 +84,18 @@ Scaffolded VeilGremlin as a Hekton **factory-output** project and loaded it with
 
 ### Decisions Made
 
-- Classification: factory-output; owner coderturtle; repo **private** initially (reversible).
+- Classification: factory-output; repo **private** initially (reversible).
 - Core = Rust; vault = SQLCipher; placeholders not synthetic; demask explicit/local/gated; LiteLLM later; supply-chain (sign+SBOM+reproducible) first-class. (ADR-001…010.)
 - Build method = contract-first agent factory (squad-per-crate, frozen interfaces, eval-gated).
 
 ### Assumptions
 
-- coderturtle is the intended GitHub owner (stated by user); private-first is the safe default for a brand-new repo.
+- The initial GitHub owner is as stated by the user; private-first is the safe default for a brand-new repo.
 - The deep research report at `~/Downloads/deep-research-report-3.md` is the authoritative source context.
 
 ### Risks / issues
 
-- **Push blocked:** the SSH alias `github.com-coderturtle` authenticates as **dermdunc** (its key is registered to dermdunc, not coderturtle), so `git push` over SSH to the private `coderturtle/veilgremlin` fails ("Repository not found"). Repo *was* created on GitHub under coderturtle. Workaround: push over HTTPS with coderturtle's `gh` token. Long-term fix: register `~/.ssh/id_ed25519_coderturtle.pub` on the coderturtle GitHub account, or standardise the remote on HTTPS.
+- **Push blocked:** an SSH host-alias/key mismatch meant `git push` over SSH to the initial private repo failed ("Repository not found"). Workaround: push over HTTPS with a `gh` token. Long-term fix: align the SSH key with the account, or standardise the remote on HTTPS. (Moot once the repo settled under `dermdunc/veilgremlin` — see the 2026-07-04 entry.)
 
 ### Next Actions
 
@@ -707,7 +707,7 @@ manually staged/committed the pending vault update.
 
 Human asked to confirm the build log genuinely tracks how/why/what this project is
 building, since it needs to ship as part of the final delivered project the way the
-coderturtle workshop build-logs do. Audited `docs/build-log/`'s 8 existing entries against
+Hekton workshop build-logs do. Audited `docs/build-log/`'s 8 existing entries against
 the actual work done and found one real gap: the T04 entry (written by the dispatching
 agent) predates the subsequent doubt-pass and never mentions the 3 real bugs found there.
 Added a second T04 entry covering that story specifically.

@@ -1,299 +1,52 @@
 # Next Actions: VeilGremlin
 
-Repo source-of-truth for the work queue. Tasks T01–T11 are defined in [`architecture/work-breakdown.md`](architecture/work-breakdown.md); the build method is in [`architecture/agent-factory-plan.md`](architecture/agent-factory-plan.md).
+Repo source-of-truth for the live work queue. Tasks T01–T11 are defined in
+[`architecture/work-breakdown.md`](architecture/work-breakdown.md); the build method is in
+[`architecture/agent-factory-plan.md`](architecture/agent-factory-plan.md). The full history of
+completed work lives in [`docs/session-log.md`](session-log.md), [`docs/decisions.md`](decisions.md),
+and [`docs/build-log/`](build-log/README.md). This file is the forward queue only, not a second log.
 
-## Immediate (Wave A — foundation, must merge before parallel work)
+## Build status
 
-- [x] **Confirm first push** to GitHub — resolved: `origin` now uses the `github.com-coderturtle`
-      SSH host alias (a real fix, not the HTTPS+gh-token workaround); `main` is pushed and
-      confirmed via `git ls-remote --heads origin` (2026-07-04).
-- [x] **Repo ownership move to dermdunc — complete (2026-07-04).** Transferred via
-      `gh api repos/coderturtle/veilgremlin/transfer -f new_owner=dermdunc`, human-accepted as
-      dermdunc, visibility flipped to public
-      (`gh repo edit dermdunc/veilgremlin --visibility public --accept-visibility-change-consequences`),
-      local `origin` repointed to `git@github.com:dermdunc/veilgremlin.git`, and confirmed
-      reachable via `git ls-remote origin`. `.hekton/project.yaml`, `.hekton/governance.yaml`,
-      `.hekton/risk-register.yaml`, the repo-local mind-palace mirror, and the `Owner:`/`Privacy
-      boundary:` headers in `README.md`/`CLAUDE.md`/`AGENTS.md`/`CODEX.md`/`docs/spec/...` all
-      updated to match. See `docs/decisions.md` for the full record.
-- [x] **Corrected 2026-07-14: the "no Rust toolchain" blocker above was stale.** Re-checked
-      against `agentic-control-tower/docs/go-live-dependencies.md` (which had already found the
-      toolchain installed on 2026-07-07) and independently re-verified: `cargo`/`rustc` were
-      already present via Homebrew. Only `cargo-deny` was actually missing — installed this
-      session (`brew install cargo-deny`). `check-prereqs.sh` still needs the prereq-check
-      update named below; not applied this session (prepared as a reviewed diff in
-      `~/hekton`'s `docs/plans/veilgremlin-v1-dogfood-runbook-v1.md`).
-- [x] **GO-LIVE dispatch, real, 2026-07-14.** `dag dispatch T01` ran for real through
-      `agentic-control-tower` + `engine-gateway-lab` — the factory's first real end-to-end
-      build event. **Finding:** the nested `claude -p --permission-mode acceptEdits` headless
-      call stalled on a Bash-command permission prompt (checking for the Rust toolchain — the
-      very blocker just corrected above) with no human to approve it, and returned a
-      "waiting on your approval" message as its final answer instead of erroring — `dag status`
-      showed `in-progress` with a clean exit and nothing built. This is a real unattended-dispatch
-      gap (headless `-p` mode has no path to approve a Bash tool call), not a VeilGremlin-specific
-      bug — worth flagging to `engine-gateway-lab`/`agentic-control-tower` for their own
-      unattended-loop work. **Resolution this session:** built T01 directly instead of retrying
-      the nested dispatch (human decision, given the toolchain question was already answered) —
-      see the T01 entry below.
-- [x] **T01 — done, 2026-07-14.** Cargo workspace (9 crates: `vg-core`, `vg-detectors`,
-      `vg-parsers`, `vg-vault`, `vg-policy`, `vg-audit`, `vg-cli`, `vg-adapters-claude`,
-      `vg-bench`) + CI (`.github/workflows/ci.yml`: fmt, clippy -D warnings, cargo-deny,
-      cargo-audit, build --locked, bench compile-check) + `deny.toml` + release skeleton
-      (`release/README.md`, SBOM/signing stubs). Crates are empty skeletons per
-      `interface-contracts.md`'s note that Squad 0 (T02) owns the canonical trait/type
-      definitions — this task scaffolds the workspace they'll land in. Verified locally:
-      `cargo build --locked && cargo fmt --check` (the DAG's own verify command) passes;
-      also `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo deny check`,
-      and `cargo audit` all pass; `cargo bench --workspace --locked --no-run` compiles. PR
-      opened against `main` from `gateway/run-20260714-T01`.
-- [x] **Two rounds of doubt-driven-development on the T01 PR — done, 2026-07-14.** Round 1
-      (single-model): found the `deny` CI job was actually failing on the real GitHub Actions
-      run (`macos-latest` + a Docker container action); fixed, re-verified the real run is now
-      green (all 6 jobs pass). Round 2 (Codex cross-model): found no `cargo test` CI job, an
-      unpinned Rust toolchain, a stale bench-gating claim in `docs/risks.md`, stale
-      reproducibility scripts (`check-prereqs.sh`/`local-assumptions.md`/`verify-project.sh`
-      didn't check for the Rust toolchain at all — the exact same gap flagged back on
-      2026-07-04 and never actually applied until now), hardcoded intra-workspace dependency
-      versions that would drift on a workspace version bump, and — ironically — a "T01 is
-      merged" overclaim introduced by round 1's own project-walkthrough.md fix (the PR isn't
-      merged yet). All fixed; see `docs/decisions.md` for the full record.
-- [x] **T01 PR merged, 2026-07-14** (github.com/dermdunc/veilgremlin/pull/2), plus its
-      session-closeout PR #3.
-- [x] **T02 — done, 2026-07-15.** Freeze shared types + library API in `vg-core`; trait seams
-      (`Detector`, `Parser`, `VaultStore`, `PolicyEngine`, `AuditSink`); contract-conformance
-      test helpers (`vg_core::conformance`) + a full worked example against mock impls
-      (`crates/vg-core/tests/conformance_stubs.rs`). Real dispatch this time actually built the
-      code (unlike T01's stall) but hit a ~10-minute tool timeout before it could close out
-      formally — picked up the work in place: it compiled clean, and `rehydrate`'s
-      destination hard-deny gate (`RemoteModelPrompt`/`ObservabilitySink`, regardless of
-      actor) is real logic, not a stub, since it doesn't depend on any Wave B crate. Everything
-      else (`scan`/`mask`/`benchmark`, `rehydrate`'s allowed-destination path) is `todo!()`
-      pointing at the task that wires it (T07/T09/T10), matching `interface-contracts.md`'s own
-      note that Phase 1 pipeline assembly happens later. Full T02 verify_command passes:
-      `cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check
-      && cargo test` (6 real tests, all green).
+T01–T10 are built and merged; the interface contract is at v1.4; 221 tests pass. The T10 eval
+harness (`vg bench`) runs and returns a verdict. **T11 (review, `/security-review`, and milestone
+sign-off) is the one task outstanding**, and it is gated on closing the precision NO-GO below.
 
-## This Week (Wave B — dispatch in parallel once T01+T02 merge)
+## Now (must close before T11 sign-off)
 
-- [x] **T03** detectors — done 2026-07-15 (see session log). **T04** placeholder/HMAC
-      keying — built 2026-07-17 (headless dispatch, unable to reach a compiler in-session)
-      and verified during PR review: `cargo build --locked && cargo clippy --all-targets
-      -- -D warnings && cargo fmt --check && cargo test -p vg-core` all green after one
-      trivial clippy fix and an fmt pass — see `docs/decisions.md`'s 2026-07-17 entry.
-      — *Squad 1 (+3)*
-- [ ] **T08** parsers (logs, diffs, JSON/YAML, `.env`, tree-sitter) — *Squad 2*
-- [ ] **T05** SQLCipher vault + keychain wrap + TTL — *Squad 3*
-- [ ] **T05b** audit sink (append-only, redaction-safe) — *Squad 5*
-- [ ] **T06** native 3-layer policy engine — *Squad 4*
+- [ ] **Close the precision NO-GO.** The T10 eval returned false-positive-rate **16.7%** against
+      the `<3%` gate (entropy 13.3%, phone 40%). Reduce entropy and phone false positives to clear
+      the gate, then re-run `vg bench`. This is the single blocker on sign-off. See RISK-0004 and
+      the 2026-07-18 T10 entry in `docs/decisions.md`.
+- [ ] **Fix the display-collision corruption** (1 of 3 mask→demask round-trips). Implement
+      collision-avoiding minting at intern time (skip an ordinal whose display already occurs in
+      the raw text), as the T09 doubt-round and T10 eval both recommended, now with data.
+- [ ] **Resolve or drop the dead `artefacts.by_language [dotenv]` config path** confirmed
+      unreachable by the T10 eval (classify-before-parse makes it unreachable). Fix the wiring or
+      remove the config surface.
 
-## Later (Wave C/D)
+## T11 review scope (attribution/hardening items surfaced during the build)
 
-- [x] **T07 — done (headless), 2026-07-18.** Wired `vg-core::scan`/`mask`: parse (first
-      `can_parse`) → detect over the full buffer (spans enrichment only) → resolve overlaps
-      (specific over generic entropy `Secret`) → per-entity Mask (`vault.intern`) /
-      IrreversibleRedact / entity-Block (`[REDACTED:TYPE]`, never interned) / Pass, back-to-front;
-      one `Scan`/`Block` audit event written and returned. **Contract v1 → v1.1:** `mask` gained
-      `ctx: &Context` (`interface-contracts.md` §2 + Versioning; ADR-012). Added
-      `tests/pipeline.rs`, `tests/pipeline_latency_gate.rs`, `benches/mask_pipeline.rs` and dev-deps
-      on the four remaining Wave B crates. **Must run at PR review** (no compiler in the headless
-      session): `cargo build` (confirm `Cargo.lock` unchanged — all new deps already in-graph),
-      then `cargo test -p vg-core && cargo clippy --all-targets -- -D warnings && cargo fmt --check`.
-- [ ] **T09** `vg` CLI + Claude Code adapter + Bedrock path + demask gate — *Squad 6* — wires
-      `rehydrate`'s allowed path (still `todo!()`; its frozen signature has no vault handle, so it
-      needs its own contract look — see the T07 decisions entry). Pass the same `Context` built for
-      `scan` into `mask`.
-- [ ] **T10** seeded corpus + eval harness + Go/No-Go report — *Squad 7*
-- [ ] **T11** review + `/security-review` + milestone sign-off — *Review Agent + human*
-- [x] Decide repo visibility flip (private → public) — decided 2026-07-04: public, as part of
-      the dermdunc ownership move above, not deferred to a later open-source milestone.
-- [ ] ~~Fix coderturtle SSH key registration~~ — superseded 2026-07-04: the repo is moving off
-      coderturtle entirely, so this is moot for VeilGremlin (the SSH host alias itself
-      (`github.com-coderturtle`) remains fine for other coderturtle-owned repos).
+- [ ] **F4, demask authorisation is attribution, not authentication.** `--actor`/`--role` are
+      self-asserted and the wrapped agent can invoke `vg demask` via its own shell. Candidate
+      hardening: hooks refuse to spawn `vg demask` from inside a wrapped session; packs get
+      restrictive perms; the vault key never enters the wrapped environment.
+- [ ] **F3, upward state-dir discovery trusts any ancestor `.veilgremlin/`.** Now warns; T11
+      should decide whether to refuse a discovered-not-created state dir, plus policy-signature
+      verification (already stubbed for Phase 2).
+- [ ] **F5, packs accumulate masked-text plaintext, unbounded.** Gitignore mitigates
+      exfil-via-commit; a TTL/purge command (`vg pack purge`) is still deferred here.
+- [ ] **dotenv-without-hint residual:** one seeded value only an artefact Block would catch (no
+      filename hint). Decide detection vs accepted-residual.
 
-## Session Update: 2026-07-14 — T01 built + two doubt-driven-development rounds + PR merged
+## Later phases (designed, not started)
 
-- [x] Dispatch/build T02 — done 2026-07-15, see the Wave A entry above.
+- [ ] Warm-path local NER (GLiNER), designed but off by default.
+- [ ] LiteLLM gateway, MCP server mode, CI/CD mode, cloud-agent packaging.
+- [ ] Synthetic-data generation and quasi-identifier leakage scoring.
 
-## Session Update: 2026-07-15 — T02 built
+## Standing conventions
 
-- [x] Doubt-driven-development pass (two rounds: single-model + Codex cross-model) — done
-      2026-07-15. Most severe: `interface-contracts.md` was never frozen/reconciled despite
-      being T02's literal acceptance criterion — now fixed, 11 missing types added, two
-      deviations reconciled. Most severe code finding: the conformance example's `MockVault`
-      ignored its namespace parameter on resolve — real cross-namespace leak in the template
-      every Wave B squad reads; fixed, and now covered by a test. Six more conformance-helper
-      gaps fixed; one contract-shape limitation documented (not fixed — `Secret`'s zeroize is
-      cosmetic given `rehydrate`'s own return type). Full record in `docs/decisions.md`.
-- [ ] Human: review/merge the T02 PR.
-- [ ] Once T01 + T02 are both merged, batch-dispatch the five Wave B squads (T03/T04, T05,
-      T05b, T06, T08).
-- [ ] Still open: the branch-naming mismatch between the ACT/engine-gateway dispatch
-      tooling's convention and `agent-factory-plan.md`'s `feat/<squad>-<task-id>-<slug>`
-      convention (flagged, not fixed, since T01).
-
-## Session Update: 2026-07-15/16 — T03 built (first genuinely unattended completion), reviewed, approved
-
-- [x] T03 dispatched (twice — first attempt got a clarifying question, prompt rewritten,
-      re-dispatched), reviewed (my own pass + two Codex cross-model rounds, 3 real bugs
-      fixed), tollgate-approved, session closed. Full record in `docs/decisions.md` and
-      `docs/session-log.md`.
-- [ ] Human: review/merge the T03 PR once opened.
-- [ ] Decide serial-vs-concurrent for T04/T05/T05b/T06/T08 now that the rework loop and the
-      RISK-0016 ledger fix are both proven for real. Default serial per the runbook unless a
-      future task completes cleanly unattended.
-- [ ] `engine-gateway-lab` RISK-0017 (gateway-review.sh's output-path resolution breaks for
-      ACT-dispatched cross-repo worktree tasks) needs a real fix before the next Wave B
-      tollgate — worked around for T03, not fixed at the root.
-
-## Session Update: 2026-07-16 — Fan-out review, Codex dogfooding plan, real latency gate, real detector census
-
-- [x] T03 PR merged; RISK-0017 documented and merged in `engine-gateway-lab`.
-- [x] Added a real, CI-enforced latency-regression gate (`crates/vg-detectors/tests/latency_gate.rs`)
-      instead of waiting for T10 — plain `#[test]`, runs on every PR already.
-- [x] Added cross-crate integration requirements to T04, T08's acceptance criteria (both pair
-      concretely with the already-closed T03) and a UX-latency human-verification criterion to
-      T09's. See `.hekton/veilgremlin-dag.toml` and `docs/architecture/work-breakdown.md`.
-- [x] Codex planning pass on dogfooding strategy — full reconciliation in `docs/decisions.md`
-      2026-07-16 entries.
-- [x] Built and ran `crates/vg-detectors/examples/census.rs` (read-only, no matched values ever
-      printed/stored) against 197 real files across VeilGremlin + `engine-gateway-lab`. **Real
-      finding, not yet resolved:** entropy (2468 hits) and phone (783 hits) detectors are
-      dominated by false positives on Hekton's own operational IDs (`run-YYYYMMDD-EG-NNN` shapes)
-      and dates — verified by hand against the actual repo content. Latency itself is fine
-      (11.2ms / 197 files). Full detail and the open design question (allowlist? tighter
-      heuristics? measure via T10's `false_positive_rate` metric?) in `docs/decisions.md`.
-- [x] **Human decision made:** ran the three options through a Codex planning pass
-      (reconciled in `docs/decisions.md`), which recommended a hybrid — fix the two
-      dominant detector-level false positives now, keep T10 as the formal gate. Human
-      approved. Implemented and measured: entropy false positives -90%, phone -91% on
-      identical `engine-gateway-lab` content (isolated before/after). A first attempt at
-      the entropy fix targeted the wrong shape (assumed Hekton run-IDs; real dominant
-      class was file paths + snake_case/kebab-case identifiers) — caught by measuring
-      against real content rather than shipping on the unverified assumption. See
-      `docs/decisions.md`.
-- [ ] Re-run `cargo run --example census -- <paths>` as each Wave B/C task lands, per the Codex
-      plan's ladder (detector-only now → parser+detector after T08 → stubbed mini-pipeline after
-      T04/T05/T06/T05b → real `mask()` after T07 → real dogfood after T09).
-- [ ] Decide serial-vs-concurrent for the remaining Wave B tasks (T04/T05/T05b/T06/T08) — still
-      open from the prior session update above.
-- [ ] Residual ~10% entropy/phone false positives left for T10's formal
-      `false_positive_rate` measurement, per the hybrid decision — not a new gap, the
-      accepted remainder.
-
-## Session Update: 2026-07-17 — PR #6 merged; build log added
-
-- [x] Merged PR #6; `main` up to date locally.
-- [x] Added `docs/build-log/` (7 backfilled entries + convention doc), wired into
-      `AGENTS.md`/`CLAUDE.md`/`CODEX.md` as a standing rule, linked from `README.md` and
-      a refreshed `docs/project-walkthrough.md`. See `docs/decisions.md`.
-- [ ] Decide serial-vs-concurrent for the remaining Wave B tasks (T04/T05/T05b/T06/T08) —
-      still open.
-- [ ] Add a build-log entry as each future task lands, per the new standing rule.
-- [ ] Revisit whether the build log earns a publishable site later — not needed yet.
-
-## Session Update: 2026-07-17 — T04 built (headless dispatch, unable to reach a compiler) and verified during PR review
-
-- [x] Built `crates/vg-core/src/keying.rs` (typed-placeholder + salted HMAC keying,
-      per-namespace/per-type ordinals, Luhn/mod-97 validators, session cache) plus
-      `crates/vg-core/tests/keying_integration.rs` (real `Finding`s from
-      `vg-detectors::all_detectors()`). See `docs/decisions.md` for five recorded
-      judgment calls made without a follow-up channel to ask.
-- [x] Verified during PR review: `cargo build --locked && cargo clippy --all-targets --
-      -D warnings && cargo fmt --check && cargo test -p vg-core` all green after one
-      trivial clippy fix and an fmt pass — every hand-traced Luhn/mod-97 vector confirmed
-      correct.
-- [x] Codex cross-model doubt-pass on the T04 diff: found and fixed 3 real bugs
-      (`Custom`-type HMAC collision, compact-vs-spaced IBAN/sort-code/phone keying
-      differently, `PlaceholderKey`'s `Debug` leaking the real HMAC hex) plus 1
-      documentation gap (`iban_mod97_is_valid` under-scoped in its own doc comment).
-      5 new regression tests. See `docs/decisions.md`'s Doubt-driven-development
-      subsection.
-- [ ] **T05 (`vg-vault`) hard requirement, not optional:** `VaultStore::intern` must
-      reseed `Keyer`'s per-namespace ordinal counters from the vault's own persisted
-      records at construction time, or ordinals can collide/drift across process
-      restarts. Found during the T04 doubt-pass; T05 doesn't exist yet so this couldn't
-      be fixed in T04 itself — flagging loudly here so it isn't silently skipped.
-- [ ] T05 (`vg-vault`) should call `Keyer`/`placeholder_key` from `VaultStore::intern`
-      rather than reimplementing keying.
-- [ ] Decide serial-vs-concurrent for the remaining Wave B tasks (T05/T05b/T06/T08) —
-      still open.
-
-## Session Update: 2026-07-17 — PR #9 merged; vault sync; build-log audit
-
-- [x] PR #9 merged (T04 + consolidated DAG changes from the now-closed PR #8).
-- [x] Vault backed up and synced (`scripts/sync-mirror-to-vault.sh`) — this project's
-      vault entry hadn't been touched since before T01. Fixed a real bug in the script
-      itself (silently staged nothing due to a stale `git add` pathspec).
-- [x] Audited `docs/build-log/` coverage against actual work done; found and fixed one
-      gap (T04's doubt-pass bugs never got their own entry). Confirmed the build log
-      ships automatically with this public repo — no separate publish step needed.
-- [ ] Re-audit build-log coverage after each future task lands.
-- [ ] Decide serial-vs-concurrent for the remaining Wave B tasks (T05/T05b/T06/T08) —
-      still open.
-
-## Session Update: 2026-07-17 — T05 (`vg-vault`) built (headless dispatch, no compiler reachable)
-
-- [x] Implemented `vg_core::traits::VaultStore` in `crates/vg-vault` (SQLCipher via `rusqlite`
-      vendored-OpenSSL, OS-keychain-wrapped DB key, per-install salt, TTL purge, cached prepared
-      statements, `demask_event` audit log). Modules: `lib`, `schema`, `keychain`, `codec`,
-      `random`, `error`; integration tests in `tests/vault.rs`.
-- [x] **Satisfied the T04-flagged hard requirement:** `Keyer` ordinal counters are reseeded from
-      the vault's persisted `mapping` rows at open, so ordinals don't collide/drift across process
-      restarts. Required one additive `vg-core` change — `Keyer::seed_ordinal` — since T04's `Keyer`
-      exposed no reseed hook (not a frozen-contract change; `Keyer` isn't in `interface-contracts.md`
-      §0–§8). Covered by an integration test that opens → drops → reopens → asserts continuity.
-- [x] `intern` calls `vg-core`'s `placeholder_key`/`Keyer::key_for` (no reimplemented HMAC);
-      `resolve` returns `NotFound` for both namespace mismatch and expiry; nine judgment calls
-      recorded in `docs/decisions.md`.
-- [ ] **PR-review compile/test pass (not yet run — no toolchain in dispatch):**
-      `cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check &&
-      cargo test -p vg-core -p vg-vault`. Needs a C toolchain + perl for the vendored
-      OpenSSL/SQLCipher build.
-- [ ] Optional but recommended: cross-model doubt-pass on the reseed + look-up-before-mint ordinal
-      logic (the subtle part), as done for T04.
-- [ ] Re-audit build-log coverage (a T05 entry was added:
-      `2026-07-17-the-vault-that-had-to-remember-its-counting.md`).
-- [ ] Decide serial-vs-concurrent for the remaining Wave B tasks (T05b/T06/T08) — still open.
-
-## Session Update: 2026-07-17 — T05b (audit sink) built under Opus, reviewed, landed
-
-- [x] T05b implemented in `crates/vg-audit/` (JSONL append-only `AuditSink`, versioned
-      schema mirror, redaction-safety property test). Dispatched concurrently under Opus.
-- [x] Verified during review (full chain green: 13 sink + 3 record tests). Two Codex
-      cross-model critique rounds fixed 6 real robustness/security bugs total (UTF-8
-      torn-tail bricking; complete-corrupt-line / malformed-schema handling; duplicate
-      AuditId; error-text redaction; truncation recovery; and — round 2 — a
-      valid-torn-tail indexed-then-truncated index/disk inconsistency). See
-      `docs/decisions.md`.
-- [x] Landed onto `main` after T05 merged (base-drift recovery: the tollgate auto-apply
-      failed because the worktree was cut from a pre-T04/T05 commit; the conflict-free
-      `vg-audit` crate was applied directly and `Cargo.lock`/docs reconciled onto current
-      `main`).
-- [ ] T07 consumes this sink in `mask()` pipeline assembly; coordinate demask logging so
-      the vault's own `demask_event` and this `AuditSink` don't double-log (T05 note).
-- [ ] Decide serial-vs-concurrent for the remaining Wave B tasks (T06/T08) — still open.
-
-## Session Update: 2026-07-17 — T06 (policy engine) built under Opus, reviewed, landed
-
-- [x] T06 implemented in `crates/vg-policy/` (3-layer resolution, signed-pack stub,
-      hard-deny for `RemoteModelPrompt`/`ObservabilitySink` enforced in code before any
-      pack rule). Chose `serde_json` (already in lockfile) — no new dependency.
-- [x] Verified (4 config + 9 engine tests). Two Codex critique rounds; round 2 returned
-      "no issues found." Documented the `artefact_default = Pass` asymmetry.
-- [ ] **T07 hard note:** artefact-`Pass` must mean "send after entity masking," never
-      "skip detection for this file," or that default becomes a fail-open leak.
-- [ ] T08 to land next.
-
-## Session Update: 2026-07-17 — T08 (parsers) built under Opus, reviewed, landed — Wave B COMPLETE
-
-- [x] T08 implemented in `crates/vg-parsers/` (json/yaml/toml/csv/log/env + rust
-      tree-sitter, cross-crate integration test to the T03 detectors). Verified: 36 lib +
-      3 integration tests. Fixed one real yaml flow-style mis-parse bug + clippy/borrow
-      issues. RISK-0011 (build gap) closed as mitigated.
-- [ ] **T07 hard note (parsers):** partial/under-spanning (a `#` inside a quoted YAML
-      value; single-quoted YAML flow scalars) must not let a span-aware detector miss part
-      of a value once T07 gates detection on spans — two concrete reproducers in
-      `docs/decisions.md`. Doesn't bite until T07 (detectors ignore spans today).
-- [x] **Wave B complete: T03, T04, T05, T05b, T06, T08 all merged.** Next: T07 (masking
-      pipeline) — the Wave C integration task that wires detectors → policy → vault →
-      audit, carrying forward the T05/T06/T08 T07 notes.
+- [ ] Add a `docs/build-log/` entry as each future material task lands, per the standing rule in
+      `AGENTS.md`/`CLAUDE.md`/`CODEX.md`.
+- [ ] Re-audit build-log coverage against actual work after each task.

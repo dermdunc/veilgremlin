@@ -8,16 +8,23 @@ and [`docs/build-log/`](build-log/README.md). This file is the forward queue onl
 
 ## Build status
 
-T01–T10 are built and merged; the interface contract is at v1.4; 221 tests pass. The T10 eval
-harness (`vg bench`) runs and returns a verdict. **T11 (review, `/security-review`, and milestone
-sign-off) is the one task outstanding**, and it is gated on closing the precision NO-GO below.
+T01–T11 complete; interface contract v1.4; 221 tests pass. **T11 human sign-off returned NO-GO
+(2026-07-19)** — the hook adapter is a validated proof-of-mechanism but does NOT ship: it does
+not deliver "invisible governance / PII never leaves the machine" without an egress proxy, and
+the keychain UX is poor. See the 2026-07-19 T11 sign-off entry in `docs/decisions.md`. The mask/
+demask logic, vault, detectors, pipeline, and tool-path masking are all validated.
 
-## Now (must close before T11 sign-off)
+## Now — the next milestone (supersedes the prior sign-off blocker order)
 
+- [ ] **Local masking proxy + daemon.** Intercept the actual request to the model endpoint,
+      mask the entire assembled payload (prompt + context) via the vault, demask the response —
+      invisible to the user; a long-lived daemon holds the vault key once (removing the keychain
+      friction). This is what turns the proven mechanism into a product that actually solves the
+      governance/risk/privacy problem. The already-deferred "route masked request to Bedrock" /
+      LiteLLM-gateway warm path. **#1 — nothing above it.**
 - [ ] **Close the precision NO-GO.** The T10 eval returned false-positive-rate **16.7%** against
-      the `<3%` gate (entropy 13.3%, phone 40%). Reduce entropy and phone false positives to clear
-      the gate, then re-run `vg bench`. This is the single blocker on sign-off. See RISK-0004 and
-      the 2026-07-18 T10 entry in `docs/decisions.md`.
+      the `<3%` gate (entropy 13.3%, phone 40%). Reduce entropy and phone false positives, then
+      re-run `vg bench`. See RISK-0004 and the 2026-07-18 T10 entry in `docs/decisions.md`.
 - [ ] **Fix the display-collision corruption** (1 of 3 mask→demask round-trips). Implement
       collision-avoiding minting at intern time (skip an ordinal whose display already occurs in
       the raw text), as the T09 doubt-round and T10 eval both recommended, now with data.

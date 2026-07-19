@@ -2044,3 +2044,49 @@ that were clean to fix before sign-off, so the tree the human signs is clean. Fi
 
 **Validation:** build, `clippy -D warnings`, `fmt`, **221 tests / 0 failures**; F3 warning
 smoke-verified; `vg bench` still runs (verdict unchanged: NO-GO on FP rate).
+
+## 2026-07-19 — T11 human sign-off: NO-GO for v1 shipping (the UX gate did its job)
+
+The human UX-invisibility session — the T11 acceptance criterion only a human can
+satisfy — returned **NO-GO. VeilGremlin cannot ship as-is.** Recorded verbatim from the
+operator's verdict during a live wrapped session (`vg run -- claude` on the demo sandbox).
+
+### What the session VALIDATED (the build is not wasted)
+The mask/demask mechanism works end-to-end: reading a fixture through the wrapped session
+masked emails/IBANs to stable placeholders the model never saw, redacted the secret
+irreversibly, and `vg demask` restored values locally; the hard-deny gate refused a remote
+destination. The cryptographic vault, the detectors, the pipeline, and the **tool-path**
+(`PreToolUse`/`PostToolUse`) masking all work and are invisible on the tool path.
+
+### Why NO-GO — the hook adapter does not deliver the product's promise
+*Invisible governance; PII never leaves the machine.* It doesn't, via hooks alone:
+
+1. **The prompt/context path is not invisible.** Claude Code's platform lets a hook only
+   *block* or *pass* a prompt — never rewrite it — so typed PII forces a block-and-resubmit
+   that breaks "invisible" and pushes sanitisation back onto the user. And the hooks do not
+   sit at the model **egress**: the full assembled request (system prompt, conversation
+   history, MCP context) is not guaranteed masked, so the core "nothing leaves the machine"
+   claim is not met by hooks at all.
+2. **Keychain UX is poor.** Process-per-hook means repeated macOS keychain/login prompts.
+
+Neither is a tweak. Both are resolved by the architecture the contract already deferred: a
+**local masking proxy** that intercepts the actual request to the model endpoint, masks the
+entire payload via the vault, and **demasks the response** — invisible to the user — with a
+long-lived daemon holding the vault key once (which also removes the keychain friction).
+Without it, VeilGremlin *proves the mechanism* but does not *solve* the governance / risk /
+privacy problem it exists for.
+
+### The gate worked as designed
+This is human-led / agent-assisted functioning correctly: the factory built and validated
+the hard parts under multi-model doubt review, and the human sign-off gate caught — **before
+ship** — that the integration does not deliver the value. Catching this here, not in
+production, is the entire point of the gate.
+
+### Reprioritised roadmap (supersedes the T10/T11 backlog order)
+1. **Local masking proxy** (egress interception + response demasking) + the daemon that
+   holds the vault key. THE next milestone — the thing that makes the product real.
+2. FP-rate precision + corpus growth (the eval NO-GO).
+3. Collision-avoiding minting; vault TTL/purge; the rest of the T11 hardening backlog.
+
+**Status:** v1 (hook adapter) = **validated proof-of-mechanism, NOT shippable.** Next
+milestone: the masking proxy.

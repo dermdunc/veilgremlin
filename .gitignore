@@ -15,11 +15,13 @@ build/
 /target/
 **/target/
 
-# Internal Hekton factory state — MUST NOT be public (identity linkage + private
-# absolute paths). Flagged by the 2026-07-19 doc-safety audit.
-# - .control-tower/: orchestrator run transcripts/ledgers (leak coderturtle<->dermdunc
-#   linkage and /Users/.../labs absolute paths)
-# - mind-palace/: repo-local Obsidian vault mirror (redundant shadow copy; belongs to the
-#   vault-sync flow, not the public product repo). Kept locally, synced via scripts.
+# Internal Hekton factory state, untracked from this PUBLIC repo (2026-07-19 doc-safety
+# audit). This handles ONLY these two dirs; the broader tree sanitisation (machine-path
+# relativisation, coderturtle<->dermdunc prose de-linkage) is a separate ongoing pass, and
+# NONE of this purges git HISTORY — the content remains in prior commits until a deliberate
+# history remediation (see the Repo Sanitisation workflow). Not "closed".
+# - .control-tower/: orchestrator run transcripts/ledgers
+# - mind-palace/: repo-local Obsidian vault mirror (belongs to the vault-sync flow, not the
+#   public product repo). Both kept locally, synced via scripts.
 .control-tower/
 mind-palace/

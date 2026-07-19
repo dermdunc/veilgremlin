@@ -1,90 +1,49 @@
-# VeilGremlin — Plain-English Project Walkthrough
+# VeilGremlin: Plain-English Project Walkthrough
 
 ## What this project is in one paragraph
 
-VeilGremlin is a local-first privacy shield for "vibe coding". When a developer uses an AI coding agent (like Claude Code) that sends code, logs, and tickets to a cloud model, VeilGremlin sits on the laptop *in front of* that model. It automatically swaps real personal data and sensitive company identifiers for stable placeholders before anything leaves the machine, then lets the developer put the real values back locally — explicitly and auditably — after the model replies. The cloud model only ever sees placeholders.
+VeilGremlin is a local-first privacy shield for "vibe coding". When a developer uses an AI coding agent (like Claude Code) that sends code, logs, and tickets to a cloud model, VeilGremlin sits on the laptop *in front of* that model. It automatically swaps real personal data and sensitive company identifiers for stable placeholders before anything leaves the machine, then lets the developer put the real values back locally, explicitly and auditably, after the model replies. The cloud model works against placeholders instead of the real values behind them.
 
 ## The simple analogy
 
-It is a translation booth at the door. Outgoing messages get their secrets swapped for code-words (`EMAIL_001`, `ACCOUNT_ID_014`) on the way out; the reply comes back in code-words; and only you, standing inside the booth, hold the key to translate the code-words back — and only into local files, never back out to the cloud.
+It is a translation booth at the door. Outgoing messages get their secrets swapped for code-words (`EMAIL_001`, `ACCOUNT_ID_014`) on the way out; the reply comes back in code-words; and only you, standing inside the booth, hold the key to translate the code-words back, and only into local files, never back out to the cloud.
 
 ## What problem we are solving
 
-AI coding agents pull in far more than a chat prompt: files, diffs, terminal output, logs, tickets, MCP resources. Any of those can contain real customer or employee data. Guardrails and DLP scanners inspect data *after* the provider already has it. VeilGremlin changes *what leaves the laptop in the first place* — which is what privacy and risk teams actually care about, and which aligns with data-minimisation and privacy-by-design expectations (without claiming "compliance").
+AI coding agents pull in far more than a chat prompt: files, diffs, terminal output, logs, tickets, MCP resources. Any of those can contain real customer or employee data. Guardrails and DLP scanners inspect data *after* the provider already has it. VeilGremlin changes *what leaves the laptop in the first place*, which is what privacy and risk teams actually care about, and which aligns with data-minimisation and privacy-by-design expectations (without claiming "compliance").
 
-## What we have built so far
+## What it does today
 
-- **2026-06-30** — Project scaffolded as a Hekton **factory-output** repo under the **coderturtle** GitHub account (private).
-- **2026-07-04** — Repo ownership moved to **dermdunc** and made **public** — VeilGremlin is an
-  enterprise architecture/governance/risk tool, not agentic-engineering tooling, so it belongs
-  under the professional-identity account per Hekton's new domain-based GitHub routing decision.
-- Authored the full **requirements & design specification** (`docs/spec/`), covering Phase 0 (discovery) and Phase 1 (laptop MVP): threat model, taxonomy, hot/warm/cold path design, token vault, policy-as-code, supply-chain model, six architecture diagrams, and Go/No-Go criteria.
-- Authored the **agent factory build plan** (`docs/architecture/`): how teams of agents build this — squad-per-crate ownership, a contract-first method, the four build waves, the task DAG (T01–T11), and the frozen interface contracts that let squads work in parallel without colliding.
-- Brought the source **deep research report** into the repo (`docs/research/`).
-- **2026-07-14 — Task T01 built and merged: the real Cargo workspace.** Nine crates
-  (`vg-core`, `vg-detectors`, `vg-parsers`, `vg-vault`, `vg-policy`, `vg-audit`, `vg-cli`,
-  `vg-adapters-claude`, `vg-bench`) matching the squad-per-crate plan, `.github/workflows/ci.yml`
-  (fmt, clippy, cargo-deny, cargo-audit, build, bench compile), `deny.toml`, and a release
-  skeleton. Crates were empty skeletons at this point — the shared types and trait definitions
-  landed in Task T02.
-- **2026-07-15 — Task T02 built and merged: `vg-core`'s frozen contract.** Shared types, trait
-  seams (`Detector`, `Parser`, `VaultStore`, `PolicyEngine`, `AuditSink`), and conformance test
-  helpers every Wave B squad builds against. Review found `interface-contracts.md` had never
-  actually been reconciled against the real code (11 missing types) and a real namespace-isolation
-  bug in the vault conformance template — both fixed before Wave B started.
-- **2026-07-15/16 — Task T03 built and merged: the five deterministic detectors** (email, phone,
-  IP, IBAN/sort-code, entropy) plus a criterion benchmark. First task to complete a genuinely
-  unattended dispatch — after an earlier attempt returned a clarifying question instead of code, a
-  new, previously-unseen failure mode for headless one-shot dispatch. Two rounds of cross-model
-  review found and fixed 3 real bugs (a partially-matched IPv4-mapped IPv6 address, a password
-  shape the entropy detector's tokenizer split apart, and a resulting IP self-overlap).
-- **2026-07-16 — Real CI latency gate, cross-crate testing requirements, and a real detector
-  census.** Added a plain-`#[test]` latency-regression gate ahead of Task T10's formal harness;
-  added integration-testing requirements to T04/T08/T09's acceptance criteria; ran a Codex
-  planning pass on dogfooding VeilGremlin as it's built; built and ran a read-only "detector
-  census" against 197 real Hekton files, which found the entropy/phone detectors dominated by
-  false positives.
-- **2026-07-16 — Fixed the entropy/phone false-positive finding, hybrid + measured.** A Codex
-  planning pass recommended fixing the two dominant detector-level false positives now while
-  keeping Task T10 as the formal precision gate. The first attempt at the entropy fix (targeting
-  Hekton's own run-ID shapes) barely helped when actually measured; the real dominant noise was
-  file paths and code identifiers, corrected accordingly. Measured, isolated before/after: entropy
-  false positives down 90%, phone down 91%, latency unaffected.
+The product is built and working end to end. A hardened Rust core does the masking on the local hot path, backed by:
 
-See **`docs/build-log/`** for the same history told as a readable, dated narrative rather than a
-technical changelog — start at [`docs/build-log/README.md`](build-log/README.md).
+- **Five deterministic detectors** (email, phone, IP, IBAN/sort-code, and an entropy-based secret detector).
+- **Parsers** for logs, diffs, JSON/YAML/TOML/CSV, `.env`, and Rust source (tree-sitter), so detection is span-aware and structure-aware.
+- **An encrypted SQLCipher vault** that holds the reversible placeholder↔value mappings, with the database key wrapped by the OS keychain.
+- **A three-layer policy engine** that decides, per entity and per artefact, whether to mask, irreversibly redact, block, or pass, with two remote destinations hard-denied for raw values by design.
+- **An append-only audit log** that records what was masked, blocked, and demasked, without storing raw values.
+- **A Claude Code adapter and the `vg` CLI**, so the same engine the hooks use is also driveable by hand (`vg run`, `vg inspect`, `vg diff`, `vg demask`, `vg audit`).
+- **A Go/No-Go eval harness** (`vg bench`) that runs the whole thing over a synthetic corpus and prints a verdict.
 
 ## How the pieces fit together
 
-A small hardened **Rust core** does the work: parse → detect → vault → policy → masked pack, all locally on a deterministic "hot path" measured in milliseconds (no network, no LLM). Thin **adapters** wire it into Claude Code (hooks + a `vg run` wrapper) and, later, into LiteLLM gateways and cloud-agent worktrees. An encrypted **SQLCipher vault** holds the reversible mappings; an **audit log** records what was masked, blocked, and demasked — without storing raw values.
+The core does the work on a deterministic "hot path": parse → detect → vault → policy → masked pack, all locally, with no network and no LLM, measured in tens of milliseconds and gated in CI. Thin adapters wire it into Claude Code (hooks plus a `vg run` wrapper) and, later, into LiteLLM gateways and cloud-agent worktrees. The encrypted vault holds the reversible mappings; the audit log records what happened without storing raw values.
 
-## What is deliberately not automated yet
+## What it does NOT do yet, and what it does not claim
 
-- The actual Rust implementation for Wave B onward (T04/T05/T05b/T06/T08 not yet dispatched;
-  T01/T02/T03 done and merged).
-- Warm-path local NER (GLiNER) — designed but off by default.
-- LiteLLM gateway, MCP server mode, CI/CD mode, cloud-agent packaging — all later phases.
-- Synthetic-data generation and quasi-identifier leakage scoring — Phase 4.
-
-## How this could connect to the wider Hekton factory
-
-VeilGremlin is itself a demonstration of the Hekton "agent factory" model: a team of builder Gremlins, each owning one crate, coordinated by frozen contracts and gated by an eval harness. It also complements existing labs (e.g. the engine-gateway-lab routing work and local-llm-lab) by being the privacy boundary that decides what context is safe to route to which model.
+- **Detection is measured, not perfect.** The eval harness returned a NO-GO on precision: too many false positives (see "Current confidence"). Separately, there is a known false-negative class: low-entropy or prose-style passwords, structured licence keys, and dotenv-shaped content with no filename hint can currently pass through undetected. So the plain promise is "the cloud model sees placeholders instead of the values the detectors caught", not "no real value can ever leak".
+- **Demask authorisation is attribution, not authentication.** Reversal is explicit, local, and audited, but in this single-user Phase 1 the `--actor`/`--role` labels are self-asserted for the audit trail, not an enforcement gate. The genuine boundary is the hard-deny on sending raw values to a remote model or observability sink. Tightening the actor gate is a follow-up.
+- **Warm-path local NER** (GLiNER) is designed but off by default.
+- **LiteLLM gateway, MCP server mode, CI/CD mode, cloud-agent packaging** are later phases.
+- **Synthetic-data generation and quasi-identifier leakage scoring** are later phases.
 
 ## Current confidence level
 
-Design: high (grounded in the research report and an explicit Go/No-Go bar). Implementation:
-Wave A (T01/T02) and the T03 detector pilot are built, reviewed, and merged; real business logic
-exists and is measured against real content (see the 2026-07-16 census). Wave B's remaining five
-tasks (T04/T05/T05b/T06/T08) are not yet dispatched. Update as evidence grows.
+Design: high, grounded in the research report and an explicit Go/No-Go bar. Implementation: the build is complete through the T10 eval, reviewed, and measured against a synthetic corpus. The open item is a measured false-positive rate above the Go/No-Go bar (16.7% overall; entropy 13.3%, phone 40%), plus a display-collision corruption seen in 1 of 3 round-trips. Both are being remediated before T11 review and sign-off. The eval harness itself is green and honest: it reports the product's red numbers rather than hiding them, which is exactly what it is for.
 
 ## Open questions
 
 - Multilingual entity coverage; quasi-identifier leakage; screenshot OCR boundary; graph-based context preservation; exact Cedar/OPA choice for enterprise policy; repo- vs session-scoped placeholder stability default. (See spec § Open Questions.)
-- ~~Repo visibility: stay private vs open-source publicly under coderturtle, and when.~~ —
-  decided 2026-07-04: public, under dermdunc (see decisions log).
 
-## Next recommended session
+## Where the detailed history lives
 
-Decide serial-vs-concurrent dispatch for the remaining Wave B tasks (T04/T05/T05b/T06/T08),
-now that T03's pilot has proven the rework loop and the ledger fix for real. Re-run the
-detector census as each lands, per the Codex dogfooding plan's ladder.
+For the same story told as a readable, dated narrative rather than a technical changelog, see **`docs/build-log/`**, starting at [`docs/build-log/README.md`](build-log/README.md). The full technical record is in [`docs/decisions.md`](decisions.md) and [`docs/session-log.md`](session-log.md).

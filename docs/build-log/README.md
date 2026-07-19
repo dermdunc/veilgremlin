@@ -40,7 +40,7 @@ That can grow into a published site later if it earns one — see
 ## Entries
 
 - [2026-06-30 — Scaffolding a privacy shield before it has any privacy logic](2026-06-30-scaffolding-a-privacy-shield.md)
-- [2026-07-04 — Giving the repo a real name to say out loud](2026-07-04-a-real-name-to-say-out-loud.md)
+- [2026-07-04 — Going public before there was anything to leak](2026-07-04-a-real-name-to-say-out-loud.md)
 - [2026-07-14 — The workspace that almost built itself](2026-07-14-the-workspace-that-almost-built-itself.md)
 - [2026-07-15 — Freezing the contract everyone else builds on](2026-07-15-freezing-the-contract-everyone-else-builds-on.md)
 - [2026-07-15 — The detector that asked a question instead of writing code](2026-07-15-the-detector-that-asked-a-question-instead-of-writing-code.md)

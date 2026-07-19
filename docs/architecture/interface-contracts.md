@@ -1,4 +1,4 @@
-# VeilGremlin — Interface Contracts (v1.3, frozen)
+# VeilGremlin — Interface Contracts (v1.4, frozen)
 
 **Status:** **FROZEN as of 2026-07-15 (Task T02); amended to v1.1 on 2026-07-18 (Task T07 — `mask` gained `ctx: &Context`, see §2); to v1.2 and v1.3 on 2026-07-18 (Task T09 — `MaskedPack` gained `bindings`, `rehydrate` re-signed, §8 hook protocol corrected to the platform's real semantics; see §1, §2, §8); to v1.4 on 2026-07-18 (Task T10 — `benchmark` gained `ctx: &Context`, see §2).** Changes now go through the contract-change protocol in `agent-factory-plan.md` §6 and bump the version below. This document was reconciled against the actual `vg-core` code at freeze time (a doubt-driven-development pass on the T02 PR found it had drifted from the implementation before either landed) — every type and trait below now matches `crates/vg-core/src/{types,traits,api}.rs` exactly, including the supporting types (§0) the original draft's illustrative signatures used but never defined.
 

@@ -2007,3 +2007,47 @@ remaining items are documented trade-offs with T11 owners. Cycle 3 is the human 
 16.7%: entropy on a commit SHA, phone on ISBN/zip — T11's inheritance, now with
 un-dilutable numerators); all other gates PASS incl. cold-hook e2e 17.0 ms. **221 tests /
 0 failures; clippy `-D warnings` + fmt clean.**
+
+## 2026-07-19 — T11 hardening: the cross-model final-review findings that were cheap and pre-sign-off
+
+Both T11 reviews (Fable, then Codex cross-model) returned **GO for v1 local-dogfood
+sign-off** and converged on the backlog triage. This change lands the hardening findings
+that were clean to fix before sign-off, so the tree the human signs is clean. Fixed:
+
+- **Hard-deny denial is now panic-safe (Codex Med).** `rehydrate`'s hard-deny gate decides
+  with zero policy/vault *evaluation*, but records the denial via the audit sink +
+  `engine.version()`. A broken/custom sink or engine that *panicked* could previously stop
+  the denial from reaching the caller — a fail-open-shaped regression on the strictest
+  gate. The recording is now wrapped in `catch_unwind` under a silenced hook, so the denial
+  always returns. (`api.rs write_demask_decision`.)
+- **Corrupt-pack errors no longer echo untrusted field contents (Codex Low).**
+  `PackError::BadMappingRef`/`BadNamespace` printed the raw field back to stderr — a hostile
+  pack could carry a real value there, and this is a redaction tool. Now withholds the
+  value, matching `vg audit`'s side-channel discipline. (`pack.rs`.)
+- **`policy.version` is validated at load (Codex Low).** It is config-tainted and copied
+  into every `MaskedPack` and blocked-hook stderr, so a version accidentally set to a real
+  identifier would be persisted/echoed. Now restricted to <=64 chars of `[A-Za-z0-9._-]`,
+  so it can never carry free text. (`config.rs`.)
+- **F3 state-dir discovery now warns (Fable's highest-priority residual).** `StatePaths::
+  resolve` returns a `Provenance` (Pinned / Discovered / CreatedInCwd); a *discovered*
+  ancestor state dir (the F3 untrusted-input surface) emits a one-line stderr NOTE that its
+  policy governs masking and should be pinned if unfamiliar. (`state.rs`, `main.rs`.)
+- **Dead `by_language: dotenv` policy branch dropped** (both reviews + the T10 report's own
+  note). `.env` handling works via the extension rule; `language_id` is unwireable under
+  classify-before-parse. Removed from `DEFAULT_GLOBAL_POLICY`; the bench's dead-branch
+  measurement now correctly reports "none — every policy branch is reachable."
+
+**Deferred with reasons (already triaged post-sign-off by BOTH reviews — not skipped):**
+- **Collision-avoiding minting** (display-collision 1/3): a genuine design tension, not a
+  hardening fix — skipping an ordinal whose display occurs in the raw buffer would make a
+  value's placeholder depend on buffer content, breaking the cross-artefact *stability*
+  invariant. Needs a real design (reserved-display set or a non-colliding display format).
+  First post-sign-off product fix.
+- **Vault TTL / `vg vault purge` (NEW-2, F5):** a feature, not a fix — TTL is crate-capable
+  but product-unreachable. Queue with pack retention.
+- **`apply_key` key-hex zeroize (NEW-4):** cosmetic (the contract already documents zeroize
+  as cosmetic at these exit points) and a proper fix wants the `zeroize` crate — a
+  protected-Cargo change. Documented, not half-scrubbed.
+
+**Validation:** build, `clippy -D warnings`, `fmt`, **221 tests / 0 failures**; F3 warning
+smoke-verified; `vg bench` still runs (verdict unchanged: NO-GO on FP rate).

@@ -210,10 +210,28 @@ impl ResolvedPolicy {
             }
         }
 
+        let version = raw
+            .version
+            .unwrap_or_else(|| "veilgremlin-policy-unversioned".to_string());
+        // Validate the version's shape at load (T11 cross-model finding): `version` is
+        // config-tainted and gets copied into every `MaskedPack` and onto blocked-hook
+        // stderr, so a value accidentally set to a real identifier (a customer email, an
+        // internal codename) would be persisted/echoed. Restrict it to an obviously-safe
+        // token charset and a sane length so it can never carry free text.
+        if version.len() > 64
+            || !version
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+        {
+            return Err(PolicyError::Load(format!(
+                "policy `version` must be <=64 chars of [A-Za-z0-9._-] (got {} chars); it is \
+                 persisted into packs and must never carry free text",
+                version.len()
+            )));
+        }
+
         Ok(Self {
-            version: raw
-                .version
-                .unwrap_or_else(|| "veilgremlin-policy-unversioned".to_string()),
+            version,
             entity_default,
             entity_overrides: resolve_class_map(raw.entities.overrides, false)?,
             artefact_default,

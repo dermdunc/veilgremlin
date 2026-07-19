@@ -25,5 +25,5 @@ pub mod wrapper;
 pub use hook::{extract_subject, run_hook, HookEvent, HookResult};
 pub use pack::{PackError, StoredNamespace, StoredPack};
 pub use runtime::{open_vault, Engine, EngineError, DEFAULT_GLOBAL_POLICY, VAULT_KEY_ENV};
-pub use state::{StatePaths, STATE_DIR_ENV, STATE_DIR_NAME};
+pub use state::{Provenance, StatePaths, STATE_DIR_ENV, STATE_DIR_NAME};
 pub use wrapper::{hook_settings_json, BEDROCK_ENV_VARS};

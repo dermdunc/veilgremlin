@@ -14,3 +14,12 @@ build/
 # Rust (Task T01)
 /target/
 **/target/
+
+# Internal Hekton factory state — MUST NOT be public (identity linkage + private
+# absolute paths). Flagged by the 2026-07-19 doc-safety audit.
+# - .control-tower/: orchestrator run transcripts/ledgers (leak coderturtle<->dermdunc
+#   linkage and /Users/.../labs absolute paths)
+# - mind-palace/: repo-local Obsidian vault mirror (redundant shadow copy; belongs to the
+#   vault-sync flow, not the public product repo). Kept locally, synced via scripts.
+.control-tower/
+mind-palace/

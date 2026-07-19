@@ -5,8 +5,8 @@
 - **Type:** factory-output
 - **Name:** veilgremlin
 - **Title:** VeilGremlin
-- **Local repo:** /Users/hekton/Development/hekton/factory-output/veilgremlin
-- **Vault control plane:** /Users/hekton/vaults/hekton-mind-palace/20-projects/factory-output/veilgremlin
+- **Local repo:** <repo>
+- **Vault control plane:** <vault>/20-projects/factory-output/veilgremlin
 - **Lifecycle stage:** active
 - **Promotion target:** none
 - **Privacy boundary:** public
@@ -20,7 +20,7 @@ Follow all rules in `~/hekton/CLAUDE.md` — including the **Hekton Repository T
 Specific to this project:
 - Classification is **factory-output** — respect the corresponding naming and path conventions
 - Inspect `.hekton/project.yaml` before making structural changes
-- Do not create files outside `/Users/hekton/Development/hekton/factory-output/veilgremlin` without confirmation
+- Do not create files outside `<repo>` without confirmation
 - Do not write to the vault without explicit authorisation (`vault_mutation_allowed: false`)
 - Record all design decisions in `docs/decisions.md`
 - Keep risks current in `docs/risks.md` and `.hekton/risk-register.yaml`

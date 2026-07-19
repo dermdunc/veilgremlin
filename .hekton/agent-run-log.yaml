@@ -34,7 +34,7 @@ agent_runs:
     approvals:
       required: true
       status: approved
-      approver: coderturtle
+      approver: dermdunc
     files_touched:
       - ".hekton/project.yaml"
       - ".hekton/governance.yaml"
@@ -66,7 +66,7 @@ agent_runs:
     approvals:
       required: true
       status: approved
-      approver: coderturtle
+      approver: dermdunc
     files_touched:
       - "Cargo.toml"
       - "Cargo.lock"
@@ -111,7 +111,7 @@ agent_runs:
     approvals:
       required: true
       status: approved
-      approver: coderturtle
+      approver: dermdunc
     files_touched:
       - "Cargo.toml"
       - "rust-toolchain.toml"
@@ -165,7 +165,7 @@ agent_runs:
     approvals:
       required: true
       status: approved
-      approver: coderturtle
+      approver: dermdunc
     files_touched:
       - "crates/vg-core/Cargo.toml"
       - "crates/vg-core/src/lib.rs"
@@ -200,7 +200,7 @@ agent_runs:
     approvals:
       required: true
       status: approved
-      approver: coderturtle
+      approver: dermdunc
     files_touched:
       - "docs/architecture/interface-contracts.md"
       - "crates/vg-core/src/traits.rs"
@@ -226,7 +226,7 @@ agent_runs:
     approvals:
       required: true
       status: approved
-      approver: coderturtle
+      approver: dermdunc
     files_touched:
       - ".hekton/veilgremlin-dag.toml"
       - ".hekton/build-tasks/T03.md"
@@ -263,7 +263,7 @@ agent_runs:
     approvals:
       required: true
       status: approved
-      approver: coderturtle
+      approver: dermdunc
     files_touched:
       - "crates/vg-detectors/tests/latency_gate.rs"
       - "crates/vg-detectors/examples/census.rs"
@@ -296,7 +296,7 @@ agent_runs:
     approvals:
       required: true
       status: approved
-      approver: coderturtle
+      approver: dermdunc
     files_touched:
       - "crates/vg-detectors/src/entropy.rs"
       - "crates/vg-detectors/src/phone.rs"
@@ -322,7 +322,7 @@ agent_runs:
     approvals:
       required: true
       status: approved
-      approver: coderturtle
+      approver: dermdunc
     files_touched:
       - "docs/build-log/README.md"
       - "docs/build-log/2026-06-30-scaffolding-a-privacy-shield.md"
@@ -356,7 +356,7 @@ agent_runs:
     approvals:
       required: true
       status: approved
-      approver: coderturtle
+      approver: dermdunc
     files_touched:
       - "crates/vg-core/src/keying.rs"
       - "crates/vg-core/tests/keying_integration.rs"
@@ -390,7 +390,7 @@ agent_runs:
     approvals:
       required: true
       status: approved
-      approver: coderturtle
+      approver: dermdunc
     files_touched:
       - "scripts/sync-mirror-to-vault.sh"
       - "docs/build-log/README.md"
@@ -415,7 +415,7 @@ agent_runs:
     approvals:
       required: true
       status: approved
-      approver: coderturtle
+      approver: dermdunc
     files_touched:
       - "crates/vg-vault/src/lib.rs"
       - "crates/vg-vault/src/codec.rs"
@@ -448,7 +448,7 @@ agent_runs:
     approvals:
       required: true
       status: approved
-      approver: coderturtle
+      approver: dermdunc
     files_touched:
       - "crates/vg-audit/src/lib.rs"
       - "crates/vg-audit/src/record.rs"
@@ -477,7 +477,7 @@ agent_runs:
     approvals:
       required: true
       status: approved
-      approver: coderturtle
+      approver: dermdunc
     files_touched:
       - "crates/vg-policy/src/lib.rs"
       - "crates/vg-policy/src/config.rs"
@@ -507,7 +507,7 @@ agent_runs:
     approvals:
       required: true
       status: approved
-      approver: coderturtle
+      approver: dermdunc
     files_touched:
       - "crates/vg-parsers/src/{json,yaml,toml,csv,log,env,rust,util,lib}.rs"
       - "crates/vg-parsers/tests/detector_integration.rs"
@@ -536,7 +536,7 @@ agent_runs:
     approvals:
       required: true
       status: approved
-      approver: coderturtle
+      approver: dermdunc
     files_touched:
       - "crates/vg-core/src/api.rs"
       - "crates/vg-core/Cargo.toml"
@@ -569,7 +569,7 @@ agent_runs:
     approvals:
       required: true
       status: pending
-      approver: coderturtle
+      approver: dermdunc
     files_touched:
       - "crates/vg-adapters-claude/src/{hook,pack,runtime,state,wrapper,lib}.rs"
       - "crates/vg-cli/src/main.rs"
@@ -601,7 +601,7 @@ agent_runs:
     approvals:
       required: true
       status: pending
-      approver: coderturtle
+      approver: dermdunc
     files_touched:
       - "crates/vg-bench/src/{lib,corpus,report,render}.rs"
       - "crates/vg-bench/benches/eval_corpus.rs"

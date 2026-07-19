@@ -20,8 +20,8 @@
 # control-tower session review/close step instead.
 
 [orchestrator]
-gateway_run = "/Users/hekton/Development/hekton/labs/engine-gateway-lab/scripts/gateway-run.sh"
-repo = "/Users/hekton/Development/hekton/factory-output/veilgremlin"
+gateway_run = "<hekton-labs>/engine-gateway-lab/scripts/gateway-run.sh"
+repo = "<repo>"
 default_verify = "cargo build --locked && cargo clippy --all-targets -- -D warnings && cargo fmt --check && cargo test"
 default_privacy = "vendor-allowed"
 spec_dir = ".hekton/build-tasks"

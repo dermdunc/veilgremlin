@@ -3,8 +3,8 @@
 ## Project Classification
 
 - **Type:** factory-output
-- **Local repo:** /Users/hekton/Development/hekton/factory-output/veilgremlin
-- **Vault:** /Users/hekton/vaults/hekton-mind-palace/20-projects/factory-output/veilgremlin
+- **Local repo:** <repo>
+- **Vault:** <vault>/20-projects/factory-output/veilgremlin
 - **Vault mutation allowed:** false
 - **Owner:** dermdunc
 
@@ -15,7 +15,7 @@ Follow all rules in `~/hekton/AGENTS.md` — including the **Hekton Documentatio
 This project is classified as **factory-output**. All agents must:
 1. Read `.hekton/project.yaml` before making structural changes
 2. Read `docs/project-walkthrough.md` before structural changes
-3. Stay within `/Users/hekton/Development/hekton/factory-output/veilgremlin` for code changes
+3. Stay within `<repo>` for code changes
 4. Update `docs/decisions.md` for any significant design decisions
 5. Append to `docs/session-log.md` at end of every session
 6. Update `docs/next-actions.md` when the work queue changes

@@ -3,7 +3,7 @@ project_title: "VeilGremlin"
 classification: factory-output
 status: active
 lifecycle_stage: active
-local_repo_path: /Users/hekton/Development/hekton/factory-output/veilgremlin
+local_repo_path: <repo>
 mind_palace_path: 20-projects/factory-output/veilgremlin
 owner: dermdunc
 created_date: 2026-06-30

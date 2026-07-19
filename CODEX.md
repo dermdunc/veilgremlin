@@ -4,8 +4,8 @@
 
 - **Type:** factory-output
 - **Name:** veilgremlin
-- **Local repo:** /Users/hekton/Development/hekton/factory-output/veilgremlin
-- **Vault control plane:** /Users/hekton/vaults/hekton-mind-palace/20-projects/factory-output/veilgremlin
+- **Local repo:** <repo>
+- **Vault control plane:** <vault>/20-projects/factory-output/veilgremlin
 - **Lifecycle stage:** active
 - **Promotion target:** none
 - **Privacy boundary:** public

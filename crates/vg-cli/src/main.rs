@@ -152,7 +152,11 @@ fn main() -> ExitCode {
 }
 
 fn dispatch(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
-    let paths = StatePaths::resolve(cli.state_dir)?;
+    let (paths, provenance) = StatePaths::resolve(cli.state_dir)?;
+    // F3 hardening: never silently trust a state dir adopted from an ancestor.
+    if let Some(warning) = provenance.discovered_warning(paths.root()) {
+        eprintln!("{warning}");
+    }
     match cli.command {
         Command::Run { cmd } => cmd_run(paths, cmd),
         Command::Hook { event } => cmd_hook(paths, &event),

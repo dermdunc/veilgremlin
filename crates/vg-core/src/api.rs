@@ -607,14 +607,24 @@ fn boundary_ok(text: &str, start: usize, end: usize) -> bool {
 /// cannot turn a denial into anything less safe. Successful demasks are attributed by the
 /// vault's own fail-closed per-`resolve` demask log, not duplicated here.
 fn write_demask_decision(policy: &Policy, dest: &Destination, actor: &Actor, allowed: bool) {
-    // The version fetch lives here, after the decision, so the hard-deny gate itself
-    // never consults the policy engine.
-    let _ = policy.audit.write(AuditEvent::DemaskDecision {
-        dest: dest.clone(),
-        actor: actor.id.clone(),
-        allowed,
-        policy_version: policy.engine.version().to_string(),
-    });
+    // Panic-safe (T11 cross-model finding): the hard-deny denial is decided with zero
+    // policy/vault *evaluation*, but it is recorded here via the audit sink and
+    // `engine.version()`. A broken/custom sink or engine that panicked would otherwise
+    // stop the denial from ever reaching the caller — a fail-*open*-shaped regression on
+    // the strictest gate. Isolate the recording so the caller's denial always returns.
+    let dest = dest.clone();
+    let actor_id = actor.id.clone();
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = policy.audit.write(AuditEvent::DemaskDecision {
+            dest,
+            actor: actor_id,
+            allowed,
+            policy_version: policy.engine.version().to_string(),
+        });
+    }));
+    std::panic::set_hook(prev);
 }
 
 /// Runs every [`CorpusSample`] through the detection pipeline and reports Go/No-Go

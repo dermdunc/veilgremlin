@@ -43,21 +43,56 @@ pub struct StatePaths {
     repo_root: PathBuf,
 }
 
+/// How [`StatePaths::resolve`] chose the state dir — the trust-provenance of the resolution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Provenance {
+    /// Explicit `--state-dir` or `VG_STATE_DIR` — the operator named it.
+    Pinned,
+    /// Adopted from an ancestor directory by upward discovery. **Untrusted-input surface
+    /// (F3):** a `.veilgremlin/` committed into a cloned repo, or a stray `~/.veilgremlin`,
+    /// is adopted here — its policy could weaken the shield. Callers should warn.
+    Discovered,
+    /// No dir found; a fresh one will be created in the cwd. Trusted (the operator's cwd).
+    CreatedInCwd,
+}
+
+impl Provenance {
+    /// A one-line stderr warning when the state dir was *discovered* rather than pinned or
+    /// created, so an adopted-from-an-ancestor policy is never silently trusted. `None` for
+    /// the trusted provenances.
+    pub fn discovered_warning(&self, root: &Path) -> Option<String> {
+        match self {
+            Provenance::Discovered => Some(format!(
+                "veilgremlin: NOTE using a discovered state dir at {} (adopted from an \
+                 ancestor, not pinned). Its policy governs masking — pin it with \
+                 --state-dir/VG_STATE_DIR if you did not create it.",
+                root.display()
+            )),
+            _ => None,
+        }
+    }
+}
+
 impl StatePaths {
     /// Resolves the state paths, applying the precedence documented on the module. Does not
-    /// create anything on disk — call [`StatePaths::ensure`] for that.
-    pub fn resolve(explicit: Option<PathBuf>) -> io::Result<Self> {
+    /// create anything on disk — call [`StatePaths::ensure`] for that. The [`Provenance`]
+    /// records HOW the dir was chosen, so callers can warn when it was *discovered* from an
+    /// ancestor (an untrusted-input surface — F3) rather than pinned or created here.
+    pub fn resolve(explicit: Option<PathBuf>) -> io::Result<(Self, Provenance)> {
         if let Some(dir) = explicit {
-            return Ok(Self::rooted_at(dir));
+            return Ok((Self::rooted_at(dir), Provenance::Pinned));
         }
         if let Some(dir) = env::var_os(STATE_DIR_ENV) {
-            return Ok(Self::rooted_at(PathBuf::from(dir)));
+            return Ok((Self::rooted_at(PathBuf::from(dir)), Provenance::Pinned));
         }
         let cwd = env::current_dir()?;
         if let Some(found) = discover_upward(&cwd) {
-            return Ok(Self::rooted_at(found));
+            return Ok((Self::rooted_at(found), Provenance::Discovered));
         }
-        Ok(Self::rooted_at(cwd.join(STATE_DIR_NAME)))
+        Ok((
+            Self::rooted_at(cwd.join(STATE_DIR_NAME)),
+            Provenance::CreatedInCwd,
+        ))
     }
 
     /// Builds paths rooted at a specific `.veilgremlin` directory (its parent becomes the

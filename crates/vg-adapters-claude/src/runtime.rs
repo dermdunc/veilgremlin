@@ -63,9 +63,6 @@ pub const DEFAULT_GLOBAL_POLICY: &str = r#"{
       "env": "block",
       "pem": "block"
     },
-    "by_language": {
-      "dotenv": "block"
-    },
     "by_mime": {}
   },
   "destinations": {

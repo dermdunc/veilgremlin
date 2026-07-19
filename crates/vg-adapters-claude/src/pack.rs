@@ -84,8 +84,21 @@ impl std::fmt::Display for PackError {
         match self {
             PackError::Io(e) => write!(f, "pack io error: {e}"),
             PackError::Json(e) => write!(f, "pack json error: {e}"),
-            PackError::BadMappingRef(s) => write!(f, "invalid mapping_ref {s:?} in pack"),
-            PackError::BadNamespace(s) => write!(f, "invalid namespace {s:?} in pack"),
+            // Do NOT echo the raw field content (T11 cross-model finding): a corrupt/
+            // hostile pack can put an arbitrary string — including a real value — in these
+            // fields, and this is a redaction tool. Report the fault, not the payload.
+            PackError::BadMappingRef(_) => {
+                write!(
+                    f,
+                    "invalid mapping_ref in pack (not a UUID; value withheld)"
+                )
+            }
+            PackError::BadNamespace(_) => {
+                write!(
+                    f,
+                    "invalid namespace in pack (unrecognised; value withheld)"
+                )
+            }
             PackError::UnknownSchema(v) => write!(
                 f,
                 "pack schema_version {v} is newer than this build supports ({PACK_SCHEMA_VERSION})"

@@ -382,3 +382,50 @@ a mock-detector regression). Stop condition: diminishing returns. 199 tests / 0 
 
 - [ ] T09 (CLI + adapter) is next — hard requirement banked: demask via `MappingRef`s
       only, never placeholder-pattern scanning. T10/T11 after.
+
+## Session: T09 (CLI + Claude Code adapter) built under Opus, doubted by Fable + Codex, landed
+
+### What Changed
+
+Dispatched T09 under Opus; the dispatch died mid-response ("Connection closed") and was
+rescued in place. Delivered the `vg` CLI (`run`/`hook`/`inspect`/`diff`/`demask`/`audit`/
+`policy check`/`vault stats`) and the Claude Code hook adapter. Contract evolved v1.1 → v1.2
+(`MaskedPack.bindings`; `rehydrate` re-signed) → **v1.3** (the §8 hook protocol was corrected
+to the platform's real exit-code/JSON semantics — the frozen `0/2/1` scheme was inverted and
+failed open end-to-end). Landed via PR #22, all CI green.
+
+### Decisions
+
+Full record in repo `docs/decisions.md` (2026-07-18 T09 entries). Two fresh-context rounds:
+**Fable** (18 findings, 6 High — keystone: the inverted hook contract voided masking against
+the real platform), then **Codex** cross-model (7 findings — keystone: a fail-open seam
+around the round-1 fixes). Trade-offs (state-dir trust, demask authn, pack TTL) routed to
+T11. 218 tests / 0 failures.
+
+### Next Actions
+
+- [ ] Human UX-invisibility session per `docs/runbook-hooks.md` (T09 acceptance).
+- [ ] T10 (eval harness) then T11 (final review).
+
+## Session: T10 (eval harness) built under Opus, doubted by Fable + Codex; first verdict NO-GO
+
+### What Changed
+
+Dispatched T10 under Opus (again rescued after a mid-response drop). Delivered `vg-bench`:
+a labelled seeded corpus, an isolated harness, the six banked measurements, and a Go/No-Go
+report + `vg bench` CLI. Contract v1.3 → **v1.4** (`benchmark` gained `ctx`). Landed via
+PR #25, all CI green.
+
+### Decisions
+
+Full record in repo `docs/decisions.md` (2026-07-19 T10 entries). **Fable** (4 High —
+keystone: the `|`-separator consistency probe was legal email atext and fabricated a
+permanent 66.7% failure) then **Codex** (5 High — all vacuous-pass seams of the round-1
+fixes). The harness's honest first verdict is **NO-GO** for one real reason: false-positive
+rate 16.7% (entropy on a commit SHA, phone on ISBN/zip), plus confirmed display-collision
+corruption 1/3 — both now data-backed decisions for T11. 221 tests / 0 failures.
+
+### Next Actions
+
+- [ ] T11 — final review (Codex engine), inheriting the FP data and the collision-minting
+      decision, plus the accepted-trade-off backlog from all four doubt rounds.

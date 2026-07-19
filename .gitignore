@@ -16,10 +16,11 @@ build/
 **/target/
 
 # Internal Hekton factory state, untracked from this PUBLIC repo (2026-07-19 doc-safety
-# audit). This handles ONLY these two dirs; the broader tree sanitisation (machine-path
-# relativisation, coderturtle<->dermdunc prose de-linkage) is a separate ongoing pass, and
-# NONE of this purges git HISTORY — the content remains in prior commits until a deliberate
-# history remediation (see the Repo Sanitisation workflow). Not "closed".
+# audit). This handles ONLY these two dirs. Private-identity prose de-linkage across the
+# docs was completed in the 2026-07-19 writer pass; machine-path relativisation in the
+# context files remains a separate pending pass. NONE of this purges git HISTORY — the
+# content remains in prior commits until a deliberate history remediation (see the Repo
+# Sanitisation workflow). Not "closed".
 # - .control-tower/: orchestrator run transcripts/ledgers
 # - mind-palace/: repo-local Obsidian vault mirror (belongs to the vault-sync flow, not the
 #   public product repo). Both kept locally, synced via scripts.

@@ -29,7 +29,7 @@ agent_runs:
     date: 2026-07-04
     agent: "claude (interactive session)"
     role: "Build Agent"
-    intent: "Move VeilGremlin's GitHub repo from coderturtle (private) to dermdunc (public) per the human's domain-based routing call, and update all current-state metadata to match."
+    intent: "Move VeilGremlin's GitHub repo from a private account to dermdunc (public) per the human's domain-based routing call, and update all current-state metadata to match."
     autonomy_level: 3
     approvals:
       required: true

@@ -20,7 +20,7 @@ changes:
   - id: CHG-0002
     date: 2026-07-04
     title: "Repo ownership moved to dermdunc; visibility flipped to public"
-    intent: "Route VeilGremlin under the correct GitHub account per its enterprise architecture/governance/risk domain, not the default factory-output coderturtle routing."
+    intent: "Route VeilGremlin under the correct GitHub account per its enterprise architecture/governance/risk domain, not the default factory-output personal-account routing."
     changed_by: "human + claude (interactive session)"
     change_type: config
     risk_level: medium

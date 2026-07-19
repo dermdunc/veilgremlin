@@ -108,6 +108,15 @@ enum Command {
         #[command(subcommand)]
         cmd: VaultCmd,
     },
+    /// Run the Go/No-Go eval harness over the seeded corpus and print the report
+    Bench {
+        /// Cold `vg hook` invocations to time for the end-to-end latency measurement
+        #[arg(long, default_value_t = 30)]
+        hook_samples: usize,
+        /// Skip the cold-hook latency measurement (spawn no `vg hook` subprocesses)
+        #[arg(long)]
+        no_hook: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -162,6 +171,13 @@ fn dispatch(cli: Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
         Command::Vault {
             cmd: VaultCmd::Stats,
         } => cmd_vault_stats(paths),
+        // `vg bench` runs in its own isolated harness (temp vault/audit + the shipped
+        // default policy), so it deliberately ignores the resolved state dir — the report
+        // must be reproducible and must never mutate a real vault.
+        Command::Bench {
+            hook_samples,
+            no_hook,
+        } => cmd_bench(hook_samples, no_hook),
     }
 }
 
@@ -514,6 +530,32 @@ fn cmd_vault_stats(paths: StatePaths) -> Result<ExitCode, Box<dyn std::error::Er
     println!("vault db:  {}", paths.vault_db().display());
     println!("mappings:  {}", vault.mapping_count()?);
     Ok(ExitCode::SUCCESS)
+}
+
+/// `vg bench`: run the eval harness over the embedded seeded corpus and print the Go/No-Go
+/// report. Uses this binary (`current_exe`) for the cold-hook latency measurement unless
+/// `--no-hook`. Exits non-zero on NO-GO / INCOMPLETE so it is usable as a CI gate.
+fn cmd_bench(hook_samples: usize, no_hook: bool) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    if !no_hook && hook_samples == 0 {
+        return Err("--hook-samples must be >= 1 (or pass --no-hook)".into());
+    }
+    let hook_binary = if no_hook {
+        None
+    } else {
+        // The cold-hook measurement spawns `vg hook` — this same binary. If we cannot locate
+        // it, skip that measurement rather than fail the whole report.
+        std::env::current_exe().ok()
+    };
+    let opts = vg_bench::Options {
+        hook_binary,
+        hook_iterations: hook_samples,
+    };
+    let report = vg_bench::run(&opts)?;
+    print!("{}", vg_bench::render(&report));
+    Ok(match report.verdict() {
+        vg_bench::Verdict::Go => ExitCode::SUCCESS,
+        vg_bench::Verdict::NoGo | vg_bench::Verdict::Incomplete => ExitCode::FAILURE,
+    })
 }
 
 /// The 18 fixed entity types, for the `policy check` summary (the enum is

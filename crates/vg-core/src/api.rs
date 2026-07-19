@@ -617,10 +617,129 @@ fn write_demask_decision(policy: &Policy, dest: &Destination, actor: &Actor, all
     });
 }
 
-/// Runs `corpus` through the pipeline and reports Go/No-Go metrics. Wired in Task T10.
-pub fn benchmark(corpus: &Corpus, policy: &Policy) -> Metrics {
-    let _ = (corpus, policy);
-    todo!("eval harness wired in Task T10 (vg-bench)")
+/// Runs every [`CorpusSample`] through the detection pipeline and reports Go/No-Go
+/// [`Metrics`]: privacy recall, precision, false-positive rate, and a p95 detection
+/// latency.
+///
+/// **Contract v1.3 → v1.4 (2026-07-18, Task T10) — `benchmark` gained `ctx: &Context`.**
+/// The frozen `benchmark(corpus, policy)` had no way to reach the detectors/parsers it must
+/// run to score the corpus — the identical gap `mask` hit at T07 (§2, v1.1). Resolved the
+/// same sanctioned way (contract-change protocol, `agent-factory-plan.md` §6): an explicit
+/// `ctx: &Context` parameter, not smuggling detectors into `Policy` (which would conflate
+/// "what to do" with "how to find it") nor pre-scoring findings into `Corpus`. The frozen
+/// [`Metrics`] **shape is unchanged** — the six richer banked measurements this task owns
+/// live in `vg-bench`'s report layer, never as new `Metrics` fields. See
+/// `interface-contracts.md` §2 (v1.4) and `docs/decisions.md`'s 2026-07-18 T10 entry.
+///
+/// **What each metric means here** (the report layer documents the Go thresholds):
+/// - **recall** — *effective* privacy recall: an expected value counts as protected only
+///   if it is both detected **and** classified `Mask`/`IrreversibleRedact` by `policy`. A
+///   detected-but-`Pass` finding leaves the value raw on the wire, so it is not recall.
+/// - **precision** / **false_positive_rate** — over the findings the policy would actually
+///   act on (post overlap-resolution, so the entropy detector's `Secret` over a real email
+///   is resolved to the `Email`, not double-counted), the share that do / do not match a
+///   labelled expected finding. `false_positive_rate == 1 - precision`.
+/// - **p95_latency_us** — p95 of the **in-process** `scan` time per sample. This is the
+///   detection cost only; the report layer measures the *cold `vg hook` binary* p95
+///   (process spawn + vault open + policy load + mask) separately and reports that as the
+///   developer-felt number, per the banked latency measurement.
+///
+/// Matching is by entity type plus span overlap (labels carry authoritative type+span;
+/// their `confidence`/`detector` provenance is not compared).
+pub fn benchmark(corpus: &Corpus, ctx: &Context, policy: &Policy) -> Metrics {
+    let mut total_expected = 0usize;
+    let mut recalled = 0usize; // detected AND policy would mask/redact
+    let mut total_effective = 0usize; // detected findings the policy would act on
+    let mut true_positive = 0usize; // those matching a labelled expected finding
+    let mut latencies_us: Vec<u64> = Vec::with_capacity(corpus.samples.len());
+
+    for sample in &corpus.samples {
+        let start = Instant::now();
+        let detected = resolve_overlaps(scan(&sample.input, ctx));
+        latencies_us.push(start.elapsed().as_micros() as u64);
+
+        // A value is only *protected* if a detector found it AND the policy masks/redacts
+        // it — a detected `Pass` entity leaves the raw value in the outgoing pack.
+        let effective: Vec<&Finding> = detected
+            .iter()
+            .filter(|f| {
+                matches!(
+                    policy.engine.classify_entity(f.entity_type.clone()),
+                    HandlingClass::Mask | HandlingClass::IrreversibleRedact
+                )
+            })
+            .collect();
+
+        for exp in &sample.expected_findings {
+            total_expected += 1;
+            if effective
+                .iter()
+                .any(|d| d.entity_type == exp.entity_type && spans_overlap(&d.span, &exp.span))
+            {
+                recalled += 1;
+            }
+        }
+        for d in &effective {
+            total_effective += 1;
+            if sample
+                .expected_findings
+                .iter()
+                .any(|e| e.entity_type == d.entity_type && spans_overlap(&e.span, &d.span))
+            {
+                true_positive += 1;
+            }
+        }
+    }
+
+    let recall = ratio(recalled, total_expected);
+    let precision = ratio(true_positive, total_effective);
+    // FP rate is over the findings the policy would act on: an over-flag that gets masked
+    // is the precision/trust cost the <3% Go gate measures. `1 - precision`, but written
+    // out so an empty-detection corpus reports 0.0, not the vacuous 1.0 `1 - 1.0` gives.
+    let false_positive_rate = if total_effective == 0 {
+        0.0
+    } else {
+        (total_effective - true_positive) as f64 / total_effective as f64
+    };
+
+    Metrics {
+        recall,
+        precision,
+        false_positive_rate,
+        p95_latency_us: p95(&mut latencies_us),
+    }
+}
+
+/// Two byte spans overlap when each starts before the other ends. Used to match a detected
+/// finding to a labelled expected one without requiring byte-exact boundaries (a label and
+/// a detector may disagree by a trailing byte).
+/// True when two spans overlap. Public (additive, non-contract) so the eval harness
+/// scores with the same overlap definition the pipeline uses (doubt-pass: a privately
+/// duplicated copy could drift).
+pub fn spans_overlap(a: &Span, b: &Span) -> bool {
+    a.start < b.end && b.start < a.end
+}
+
+/// `numerator / denominator` as a ratio in `0.0..=1.0`; an empty denominator is `1.0`
+/// (vacuously perfect: no expected values to miss, or no detections to be wrong about).
+fn ratio(numerator: usize, denominator: usize) -> f64 {
+    if denominator == 0 {
+        1.0
+    } else {
+        numerator as f64 / denominator as f64
+    }
+}
+
+/// Nearest-rank p95 of the samples (µs). Empty input is `0`.
+fn p95(latencies_us: &mut [u64]) -> u64 {
+    if latencies_us.is_empty() {
+        return 0;
+    }
+    latencies_us.sort_unstable();
+    let idx = ((latencies_us.len() as f64 * 0.95).ceil() as usize)
+        .saturating_sub(1)
+        .min(latencies_us.len() - 1);
+    latencies_us[idx]
 }
 
 #[cfg(test)]

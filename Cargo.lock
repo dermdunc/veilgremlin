@@ -1123,7 +1123,16 @@ name = "vg-bench"
 version = "0.1.0"
 dependencies = [
  "criterion",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "vg-adapters-claude",
+ "vg-audit",
  "vg-core",
+ "vg-detectors",
+ "vg-parsers",
+ "vg-policy",
+ "vg-vault",
 ]
 
 [[package]]
@@ -1134,6 +1143,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "vg-adapters-claude",
+ "vg-bench",
  "vg-core",
  "vg-vault",
 ]

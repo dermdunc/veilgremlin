@@ -25,6 +25,8 @@ serde_json = "1"
 # `vg vault stats` opens an inspection handle directly (the VaultStore trait deliberately
 # exposes no counting; Vault::mapping_count is the concrete impl's own inspection API).
 vg-vault = { workspace = true }
+# `vg bench` runs the Go/No-Go eval harness over the embedded seeded corpus.
+vg-bench = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

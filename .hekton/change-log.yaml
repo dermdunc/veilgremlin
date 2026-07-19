@@ -350,3 +350,18 @@ changes:
       - "docs/architecture/interface-contracts.md"
       - "docs/runbook-hooks.md"
       - ".hekton/build-tasks/T09-output.md"
+  - id: CHG-0019
+    date: 2026-07-19
+    title: "Task T10: vg-bench eval harness + Go/No-Go gate; interface contract v1.3 -> v1.4"
+    changed_by: "opus (dispatch, rescued) + fable (rescue + docs)"
+    change_type: build
+    risk_level: medium
+    validation:
+      - "221 tests / 0 failures; clippy -D warnings + fmt clean; vg bench runs end-to-end and exits 1 on its own NO-GO verdict"
+    approvals:
+      required: true
+      status: pending
+      approver: coderturtle
+    links:
+      - "docs/decisions.md"
+      - "docs/architecture/interface-contracts.md"

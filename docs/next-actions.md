@@ -22,17 +22,20 @@ demask logic, vault, detectors, pipeline, and tool-path masking are all validate
       friction). This is what turns the proven mechanism into a product that actually solves the
       governance/risk/privacy problem. The already-deferred "route masked request to Bedrock" /
       LiteLLM-gateway warm path. **#1 — nothing above it.**
-- [ ] **Close the precision NO-GO — now down to two concrete cases, not a broad class.**
-      Post-fix (T10 doubt-pass round 2, 2026-07-19), the un-dilutable benign-slice numerator is
-      **entropy: 1 (a commit SHA), phone: 2 (ISBN/zip)** — format-collision, not entity
-      ambiguity. Recommended fix (targeted, same shape as the 2026-07-16 entropy/phone hybrid
-      patch — an entity-relationship-graph approach was considered and rejected for this gate,
-      see the 2026-07-21 decision): (a) `EntropyDetector` — exclude strings matching a git-SHA
-      shape (hex charset, 7 or 40 chars, optionally corroborated by adjacency to
-      "commit"/"sha"/"rev"); (b) `PhoneDetector` — validate ISBN-10/13 check digits and
-      recognize zip/postal-code shape (digit count/format distinct from a phone number) and
-      exclude matches. Re-run `vg bench` after. See RISK-0004 and the 2026-07-19 T10 doubt-pass
-      round 2 entry in `docs/decisions.md`.
+- [ ] **Precision NO-GO — fix implemented and verified GO locally; PENDING REVIEW, not
+      merged.** Branch `agent/claude/t10-fp-detector-fixes` implements the targeted fix
+      next-actions previously described (`EntropyDetector` git-SHA-context exclusion,
+      `PhoneDetector` ISBN-13/10 checksum + ZIP+4 shape exclusion) **plus a third residual
+      found while re-running the harness after those two**: `is_structured_identifier` now
+      splits on `=` too, closing a `LICENSE_KEY=ACME-2026-DEMO-KEY`-shaped false positive
+      (`docs/decisions.md`, 2026-07-21 entry has the full detail and the reasoning for each).
+      `cargo test --workspace` (all green), `clippy -D warnings`, `fmt --check` all pass.
+      **`vg bench` verdict: GO** — false-positive-rate is now **0.0%** (was 16.7%), all other
+      gates unchanged/PASS, hot-path p95 15.0 ms. **This does not ship on its own —
+      human review + this repo's usual doubt-pass discipline before merge, same as every
+      other T10-adjacent change** (see the many precedents in `docs/decisions.md`); the
+      masking-proxy milestone (#1 above) and the display-collision fix (below) are unrelated
+      and still open regardless of this gate's status.
 - [ ] **Fix the display-collision corruption** (1 of 3 mask→demask round-trips). Implement
       collision-avoiding minting at intern time (skip an ordinal whose display already occurs in
       the raw text), as the T09 doubt-round and T10 eval both recommended, now with data.

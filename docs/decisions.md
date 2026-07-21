@@ -2129,3 +2129,75 @@ human had already agreed to scope it before this grounding check ran — a remin
 "grounded against the merged repo" (this project's own stated authoring discipline for plans,
 see the masking-proxy-plan's author line) has to mean actually reading the current data, not
 just the shape of a plausible-sounding mechanism.
+
+## 2026-07-21 - T10 precision fix implemented and verified GO locally (branch `agent/claude/t10-fp-detector-fixes`, PENDING REVIEW/MERGE)
+
+**Context:** direct follow-on to the redirect decision above. Implemented the targeted fix
+`docs/next-actions.md` pointed at, in `crates/vg-detectors/src/entropy.rs` and `phone.rs`.
+
+**`EntropyDetector` — git-SHA exclusion.** New `looks_like_git_sha`: excludes a token from
+`Secret` classification only when it is BOTH (a) 7-64 lowercase hex characters (covers
+abbreviated/full SHA-1 and SHA-256 object IDs) AND (b) immediately preceded (after skipping
+`:`/`=`/whitespace) by a case-insensitive context word (`commit`, `sha`, `sha1`, `sha256`,
+`rev`, `hash`). Deliberately narrow on both axes — length/charset alone would risk silently
+missing real secrets that happen to be lowercase hex (a real false-negative regression, worse
+than the FP being fixed); context alone would do nothing for a non-hex token. Accepted,
+named residual: a real secret that is coincidentally hex-shaped AND immediately preceded by
+one of these words would still be missed — same posture as this file's other documented
+residuals.
+
+**`PhoneDetector` — ISBN-13/10 checksum + ZIP+4 shape exclusion.** The phone regex's own
+match span turned out NOT to be the whole ISBN — its `{2,4}`-digit-group cap splits
+`978-3-16-148410-0` into the inner fragment `3-16-148410`, starting mid-number (confirmed by
+directly instrumenting the detector against the corpus content, not assumed). So the fix
+first re-expands the match to the full contiguous digit/hyphen run in the buffer
+(`expand_to_digit_hyphen_run`), then validates that run as an ISBN-13 (13 digits, `978`/`979`
+prefix, alternating-weight mod-10 checksum) or ISBN-10 (10 digits, weighted mod-11 checksum,
+digit-only — the `X`-check-digit form doesn't match this detector's digit-only pattern in the
+first place, an accepted, named residual). Checksum validation, not a shape guess, so a real
+13-digit hyphenated phone number would only be excluded if it also coincidentally satisfies
+the ISBN checksum (~1-in-5000 with the prefix requirement) — verified with a dedicated
+"wrong checksum still flags" test. ZIP+4 (`DDDDD-DDDD`, 5-then-4 digit grouping) is a
+separate, structural (not checksum) exclusion — real phone numbers essentially never group
+5-then-4.
+
+**A third residual, found by re-running `vg bench` after the above two, not part of the
+original ask.** `entropy` still showed 1 FP: `LICENSE_KEY=ACME-2026-DEMO-KEY` in the
+`dotenv-shaped-no-path-hint` corpus sample — pre-existing, unrelated to the SHA/ISBN fixes,
+newly visible as the sole remaining entropy FP once the commit-SHA one closed. Confirmed
+via the corpus manifest that this value is deliberately listed under that sample's
+`residual_secrets` (a KNOWN, accepted entity-detection miss the sample's own description
+says "only the artefact Block would have caught") — so a fix here is squarely in scope, not
+a new promise. Root cause: `is_structured_identifier`'s split set (`/`, `.`, `_`, `-`) didn't
+include `=`, so a whole `KEY=value` assignment where BOTH sides are word/numeric-shaped
+scored as one entropy blob across the `=` boundary. Fix: add `=` to the split set. Verified
+this doesn't create a new residual class — a value segment mixing letters and digits (the
+vast majority of real secret shapes) still fails the all-alpha/all-digit check and is
+unaffected; only a segment that is ALREADY purely alphabetic or short-numeric on its own
+(already excludable before this fix, just not across an `=` boundary) is newly reachable.
+
+**Verified, not asserted:**
+- `cargo test --workspace`: all green (was 221 tests pre-session; grew with the new
+  regression tests for each fix — commit-SHA-with-context / hex-with-no-context /
+  non-hex-after-commit / ISBN-13 valid+invalid-checksum / ISBN-10 valid+invalid-checksum /
+  ZIP+4 / LICENSE_KEY / real-secret-after-`=`).
+- `cargo clippy --all-targets -- -D warnings`: clean (one `manual_is_multiple_of` lint fixed
+  along the way).
+- `cargo fmt --check`: clean.
+- `vg bench` (full run, hook latency included): **verdict GO.** false-positive-rate **0.0%**
+  (gate `<3.0%`, was 16.7% at T10 sign-off); all other gates unchanged/PASS (zero-raw-PII,
+  secret-recall 100%, pii-recall 100%, placeholder-consistency 100%, in-process-detect-p95
+  13.4 ms, structural checks 2/2, hot-path-p95 15.0 ms). Detector-level FP: entropy 0/13,
+  phone 0/3, both 0% including the benign-lookalike slice.
+
+**What this does NOT mean.** The FP-rate gate (T10 dependency #3 on the reprioritised
+roadmap) is closed, but nothing else changed: the masking proxy (#1, still not built) and
+the display-collision corruption (1 of 3 collision samples still corrupted, confirmed again
+in this same `vg bench` run) are unrelated, still-open items. This is not a ship decision.
+
+**Not merged.** Landed on branch `agent/claude/t10-fp-detector-fixes`, PR pending. This repo
+has repeatedly doubt-passed precision changes before merge (the 2026-07-15 and 2026-07-16
+entropy/phone rounds, the T10 doubt-pass rounds 1-2) precisely because a privacy detector's
+correctness has asymmetric stakes — a bad "fix" that quietly narrows detection is worse than
+the false positive it removes. This change should get the same treatment before it lands,
+not skip it because the harness result looks good.

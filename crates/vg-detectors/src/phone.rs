@@ -87,6 +87,94 @@ fn looks_like_iso_date(matched: &[u8]) -> bool {
     (1900..=2099).contains(&y) && (1..=12).contains(&m) && (1..=31).contains(&d)
 }
 
+/// Expands a match's byte range to the full contiguous run of digits/hyphens in `buf`,
+/// walking left and right from the match bounds. The phone regex's per-group digit cap
+/// (`{2,4}`) can split a longer structured number -- an ISBN-13's `978-3-16-148410-0`
+/// matches this detector's pattern only as the inner fragment `3-16-148410`, starting
+/// and ending mid-number -- so checksum validation needs the WHOLE number, not just the
+/// regex's own match span.
+fn expand_to_digit_hyphen_run(buf: &[u8], start: usize, end: usize) -> (usize, usize) {
+    let mut s = start;
+    while s > 0 && matches!(buf[s - 1], b'0'..=b'9' | b'-') {
+        s -= 1;
+    }
+    let mut e = end;
+    while e < buf.len() && matches!(buf[e], b'0'..=b'9' | b'-') {
+        e += 1;
+    }
+    (s, e)
+}
+
+/// Validates an ISBN-13 checksum: exactly 13 digits, a `978`/`979` (Bookland EAN)
+/// prefix, alternating 1/3 weights summing to 0 mod 10. Both the prefix and the
+/// checksum are required together -- a real phone number satisfying the mod-10 checksum
+/// alone happens by chance roughly 1 in 10; requiring the prefix too narrows that
+/// further, so this is a validated exclusion, not a shape guess.
+fn looks_like_isbn13(digits: &[u32]) -> bool {
+    if digits.len() != 13 {
+        return false;
+    }
+    let bookland_prefix = digits[0] == 9 && digits[1] == 7 && (digits[2] == 8 || digits[2] == 9);
+    if !bookland_prefix {
+        return false;
+    }
+    let sum: u32 = digits[..12]
+        .iter()
+        .enumerate()
+        .map(|(i, &d)| if i % 2 == 0 { d } else { d * 3 })
+        .sum();
+    (10 - (sum % 10)) % 10 == digits[12]
+}
+
+/// Validates an ISBN-10 checksum: exactly 10 digits, weighted sum (`d1*10 + d2*9 + ... +
+/// d10*1`) divisible by 11. **Scope note:** only the all-digit form is handled -- an
+/// ISBN-10 whose check digit is the literal character `X` (representing 10) doesn't
+/// match this detector's digit-only pattern in the first place, so it never reaches
+/// this function; accepted as a named residual, not fixed here.
+fn looks_like_isbn10(digits: &[u32]) -> bool {
+    if digits.len() != 10 {
+        return false;
+    }
+    let sum: u32 = digits
+        .iter()
+        .enumerate()
+        .map(|(i, &d)| d * (10 - i as u32))
+        .sum();
+    sum.is_multiple_of(11)
+}
+
+/// Excludes a match whose *expanded* digit/hyphen run (§`expand_to_digit_hyphen_run`)
+/// passes an ISBN-13 or ISBN-10 checksum.
+fn looks_like_isbn(buf: &[u8], m_start: usize, m_end: usize) -> bool {
+    let (s, e) = expand_to_digit_hyphen_run(buf, m_start, m_end);
+    let digits: Vec<u32> = buf[s..e]
+        .iter()
+        .filter(|b| b.is_ascii_digit())
+        .map(|&b| u32::from(b - b'0'))
+        .collect();
+    looks_like_isbn13(&digits) || looks_like_isbn10(&digits)
+}
+
+/// Excludes matches shaped like a US ZIP+4 postal code (`DDDDD-DDDD`): exactly two
+/// digit groups of length 5 and 4 joined by a single hyphen, and nothing else in the
+/// match. Real phone numbers essentially never group as 5-then-4 (US/international
+/// numbers group in 2-4 digit runs with an area/country code, not a 5-digit leading
+/// group), so this is a safe, narrow structural exclusion -- the same posture as the
+/// existing `looks_like_iso_date` shape check, not a blanket digit-count carve-out.
+fn looks_like_zip_plus4(matched: &[u8]) -> bool {
+    let Ok(s) = std::str::from_utf8(matched) else {
+        return false;
+    };
+    let parts: Vec<&str> = s.split('-').collect();
+    let [first, second] = parts.as_slice() else {
+        return false;
+    };
+    first.len() == 5
+        && second.len() == 4
+        && first.bytes().all(|b| b.is_ascii_digit())
+        && second.bytes().all(|b| b.is_ascii_digit())
+}
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct PhoneDetector;
 
@@ -105,6 +193,8 @@ impl Detector for PhoneDetector {
                 if !(MIN_DIGITS..=MAX_DIGITS).contains(&digit_count)
                     || !has_phone_marker(matched)
                     || looks_like_iso_date(matched)
+                    || looks_like_zip_plus4(matched)
+                    || looks_like_isbn(buf, m.start(), m.end())
                 {
                     return None;
                 }
@@ -206,5 +296,51 @@ mod tests {
     #[test]
     fn satisfies_the_detector_contract() {
         assert_detector_contract(&PhoneDetector, b"+1-415-555-2671 and 555-1234", &[]);
+    }
+
+    #[test]
+    fn ignores_an_isbn13() {
+        // The exact T10 benign-lookalike residual (docs/decisions.md, 2026-07-21): the
+        // regex's own match span is the inner fragment "3-16-148410", starting mid-number.
+        let buf = b"ISBN 978-3-16-148410-0 and zip 12345-6789 in the shipping record";
+        assert!(
+            PhoneDetector.detect(buf, &[]).is_empty(),
+            "expected both the ISBN-13 and the ZIP+4 to be excluded, got {:?}",
+            PhoneDetector.detect(buf, &[])
+        );
+    }
+
+    #[test]
+    fn still_flags_a_13_digit_hyphenated_number_with_a_bad_isbn_checksum() {
+        // Same digit-group shape and a 978 prefix, but the check digit is wrong -- must
+        // not be excluded by a blanket ISBN-shape guess, only a validated checksum.
+        let buf = b"call 978-3-16-148410-9 now";
+        assert!(!PhoneDetector.detect(buf, &[]).is_empty());
+    }
+
+    #[test]
+    fn ignores_an_isbn10() {
+        // The Wikipedia-canonical ISBN-10 checksum example.
+        let buf = b"catalog number 0-306-40615-2 recorded";
+        assert!(PhoneDetector.detect(buf, &[]).is_empty());
+    }
+
+    #[test]
+    fn still_flags_a_10_digit_hyphenated_number_with_a_bad_isbn10_checksum() {
+        let buf = b"call 0-306-40615-9 now";
+        assert!(!PhoneDetector.detect(buf, &[]).is_empty());
+    }
+
+    #[test]
+    fn ignores_a_zip_plus_4() {
+        assert!(PhoneDetector
+            .detect(b"ship to zip 12345-6789 please", &[])
+            .is_empty());
+    }
+
+    #[test]
+    fn still_detects_a_real_number_with_a_different_grouping_than_zip_plus4() {
+        // 5 then 4 digits is excluded; 3-3-4 (a real US-shaped grouping) must not be.
+        assert_eq!(PhoneDetector.detect(b"call 415-555-1234 now", &[]).len(), 1);
     }
 }

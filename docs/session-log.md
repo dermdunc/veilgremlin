@@ -1091,3 +1091,31 @@ this entry); no code, no build, no `vg bench` run.
 
 ### Mind-palace updated
 - No (vault mutation not authorised).
+
+## Session: T10 precision fix implemented — vg bench verdict now GO locally; PR open, not merged
+
+**Date:** 2026-07-21
+
+Implemented the fix the previous session's redirect pointed at: `EntropyDetector` now excludes
+git-SHA-shaped tokens when corroborated by context (`commit`/`sha`/`rev`/`hash` immediately
+before a 7-64 char lowercase-hex token), and `PhoneDetector` now excludes ISBN-13/10 via
+checksum validation (expanding the regex's own partial match back out to the full digit/hyphen
+run first, since the regex's digit-group cap splits a real ISBN mid-number) and ZIP+4 via
+shape. A third, previously-undocumented residual (`LICENSE_KEY=ACME-2026-DEMO-KEY`, a value the
+corpus's own manifest already lists as an intentional, accepted entity-detection miss) surfaced
+on re-running the harness after the first two fixes and was closed too (`is_structured_identifier`
+now splits on `=`). Full reasoning and the safety argument for each (why it doesn't create a new
+false-negative class) are in `docs/decisions.md`.
+
+`vg bench` verdict: **GO** (false-positive-rate 0.0%, was 16.7%; every other gate unchanged).
+Masking proxy (#1 on the roadmap) and the display-collision corruption are unrelated and still
+open — this is not a ship decision. Landed on `agent/claude/t10-fp-detector-fixes`, PR open,
+**deliberately not merged** — this repo doubt-passes precision changes before they land, and a
+result looking clean isn't a reason to skip that this time.
+
+### Validation
+`cargo test --workspace`: all green. `cargo clippy --all-targets -- -D warnings`: clean.
+`cargo fmt --check`: clean. `vg bench` (with hook latency): GO, all gates PASS.
+
+### Mind-palace updated
+- No (vault mutation not authorised).

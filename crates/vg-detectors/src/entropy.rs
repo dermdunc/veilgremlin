@@ -104,6 +104,20 @@ fn is_token_byte(b: u8) -> bool {
 /// segments mix letters and digits (the vast majority of real base64/hex/API-key
 /// shapes) is unaffected, since a mixed segment is neither purely alphabetic nor purely
 /// numeric and fails this exclusion.
+/// **`=` added to the split set (2026-07-21, closing a T10 residual surfaced by re-running
+/// `vg bench` after the commit-SHA/ISBN fixes below: `docs/decisions.md`).** `is_token_byte`
+/// treats `=` as part of a token (needed for real `KEY=<secret>` shapes where the value
+/// itself is high-entropy), so a benign env-style assignment whose value is ALSO
+/// word/numeric-shaped -- `LICENSE_KEY=ACME-2026-DEMO-KEY` -- was being scored as one
+/// entropy blob across the `=` boundary instead of recognized as structured. Splitting on
+/// `=` here (a decomposition-only concern, separate from `is_token_byte`'s tokenization)
+/// lets each side of an assignment get evaluated on its own segments, without changing what
+/// counts as "one token" for entropy scoring or matching. **Does not create a new residual
+/// class:** a real secret whose *value* segments are only alphabetic after the `=` split
+/// (e.g. a dictionary-word passphrase) was already excluded by this function before `=` was
+/// added -- the same accepted trade-off below, just reachable across one more delimiter, not
+/// a new one. A value segment that mixes letters and digits (the vast majority of real
+/// secret shapes) still fails `all_alpha`/`all_digit` and is unaffected.
 fn is_structured_identifier(token: &[u8]) -> bool {
     let Ok(s) = std::str::from_utf8(token) else {
         return false;
@@ -112,7 +126,7 @@ fn is_structured_identifier(token: &[u8]) -> bool {
     // `.hekton/risk-register.yaml`, or a doubled delimiter) are common and not
     // themselves suspicious -- filtered out rather than treated as disqualifying.
     let segments: Vec<&str> = s
-        .split(['/', '.', '_', '-'])
+        .split(['/', '.', '_', '-', '='])
         .filter(|seg| !seg.is_empty())
         .collect();
     if segments.len() < 2 {
@@ -124,6 +138,61 @@ fn is_structured_identifier(token: &[u8]) -> bool {
         let all_digit = bytes.iter().all(|b| b.is_ascii_digit());
         all_alpha || (all_digit && bytes.len() <= 8)
     })
+}
+
+/// Case-insensitive markers that, immediately before a hex-shaped token (skipping a
+/// single separator like `:`/`=`/whitespace), corroborate "this is a git object hash",
+/// not a secret.
+const GIT_SHA_CONTEXT_WORDS: [&[u8]; 6] = [b"commit", b"sha1", b"sha256", b"sha", b"rev", b"hash"];
+
+/// Whether the word immediately preceding `start` in `buf` (after skipping ordinary
+/// separator bytes: space, tab, `:`, `=`) case-insensitively matches a git-SHA context
+/// marker.
+fn preceded_by_git_sha_context(buf: &[u8], start: usize) -> bool {
+    let mut i = start;
+    while i > 0 && matches!(buf[i - 1], b' ' | b'\t' | b':' | b'=') {
+        i -= 1;
+    }
+    let word_end = i;
+    while i > 0 && buf[i - 1].is_ascii_alphabetic() {
+        i -= 1;
+    }
+    let word = &buf[i..word_end];
+    GIT_SHA_CONTEXT_WORDS
+        .iter()
+        .any(|w| word.eq_ignore_ascii_case(w))
+}
+
+/// Excludes a token from `Secret` classification when it is shaped like a git object
+/// hash (7-64 lowercase hex characters -- covers abbreviated and full SHA-1/SHA-256
+/// object IDs) **and** is immediately preceded by a git-hash context word (`commit`,
+/// `sha`, `rev`, `hash`, ...). Deliberately narrow on both axes, not a blanket hex-shape
+/// carve-out (2026-07-21, closing the T10 residual FP: `docs/decisions.md`,
+/// benign-slice entropy finding = 1, a commit SHA):
+///
+/// - **Length + charset alone is not enough.** Many real secrets (session tokens, some
+///   API keys) are themselves lowercase hex of a length that would collide with a SHA;
+///   excluding every such token regardless of context would reopen a false-negative hole
+///   this detector exists to avoid -- worse than the false positive being fixed.
+/// - **Context alone is not enough either.** A token that merely follows the word
+///   "commit" but isn't hex-shaped (e.g. a non-hex build identifier) is left to the
+///   normal entropy/structured-identifier logic, unaffected by this exclusion.
+/// - **Accepted residual:** a real secret that is coincidentally pure lowercase hex AND
+///   immediately preceded by one of these context words (e.g. `commit token: <hex
+///   secret>`) would be missed. Narrow and named, not fixed here -- the same posture
+///   this file already takes with its other documented residuals.
+fn looks_like_git_sha(buf: &[u8], start: usize, token: &[u8]) -> bool {
+    let len = token.len();
+    if !(7..=64).contains(&len) {
+        return false;
+    }
+    if !token
+        .iter()
+        .all(|&b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return false;
+    }
+    preceded_by_git_sha_context(buf, start)
 }
 
 fn shannon_entropy_bits_per_byte(token: &[u8]) -> f64 {
@@ -198,6 +267,9 @@ impl Detector for EntropyDetector {
                 continue;
             }
             if is_structured_identifier(token) {
+                continue;
+            }
+            if looks_like_git_sha(buf, start, token) {
                 continue;
             }
             let entropy = shannon_entropy_bits_per_byte(token);
@@ -330,6 +402,54 @@ mod tests {
     fn satisfies_the_detector_contract() {
         let buf = b"export API_KEY=zQ3v9Lm2Xp7RwT6uYbN8dKfJhC1sEoAi and plain text";
         assert_detector_contract(&EntropyDetector::default(), buf, &[]);
+    }
+
+    #[test]
+    fn ignores_a_license_key_shaped_env_assignment() {
+        // A second T10 residual (docs/decisions.md, 2026-07-21), surfaced only after the
+        // commit-SHA fix: `=` wasn't a split delimiter, so this whole assignment scored as
+        // one entropy blob even though both sides are word/numeric-shaped.
+        let buf = b"LICENSE_KEY=ACME-2026-DEMO-KEY";
+        assert!(EntropyDetector::default().detect(buf, &[]).is_empty());
+    }
+
+    #[test]
+    fn still_flags_a_real_secret_after_an_equals_sign() {
+        // Same `KEY=value` shape, but the value mixes letters and digits -- must not be
+        // swallowed by the `=` split added for the LICENSE_KEY case above.
+        let buf = b"API_KEY=zQ3v9Lm2Xp7RwT6uYbN8dKfJhC1sEoAi";
+        assert_eq!(EntropyDetector::default().detect(buf, &[]).len(), 1);
+    }
+
+    #[test]
+    fn ignores_a_commit_sha_with_git_context() {
+        // The exact T10 benign-lookalike residual (docs/decisions.md, 2026-07-21):
+        // a full 40-char lowercase-hex SHA-1 immediately preceded by "commit".
+        let buf = b"commit 17b27d5c8f9e2a1b3d4c5e6f7a8b9c0d1e2f3a4b merged on 2026-07-18";
+        assert!(EntropyDetector::default().detect(buf, &[]).is_empty());
+    }
+
+    #[test]
+    fn still_flags_a_hex_looking_secret_with_no_git_context() {
+        // Same shape (lowercase hex, SHA-length), no context word -- must NOT be
+        // excluded by a blanket hex-shape carve-out.
+        let buf = b"token=17b27d5c8f9e2a1b3d4c5e6f7a8b9c0d1e2f3a4b";
+        assert_eq!(EntropyDetector::default().detect(buf, &[]).len(), 1);
+    }
+
+    #[test]
+    fn still_flags_a_non_hex_token_after_the_word_commit() {
+        // Context word present, but the token itself isn't hex-shaped -- the context
+        // exclusion must not swallow ordinary high-entropy secrets that merely follow
+        // the word "commit" in prose.
+        let buf = b"commit token zQ3v9Lm2Xp7RwT6uYbN8dKfJhC1sEoAi applied";
+        assert_eq!(EntropyDetector::default().detect(buf, &[]).len(), 1);
+    }
+
+    #[test]
+    fn git_sha_context_words_are_case_insensitive_and_tolerate_a_colon() {
+        let buf = b"Commit: 17b27d5c8f9e2a1b3d4c5e6f7a8b9c0d1e2f3a4b";
+        assert!(EntropyDetector::default().detect(buf, &[]).is_empty());
     }
 
     #[test]

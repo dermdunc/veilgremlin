@@ -2090,3 +2090,42 @@ production, is the entire point of the gate.
 
 **Status:** v1 (hook adapter) = **validated proof-of-mechanism, NOT shippable.** Next
 milestone: the masking proxy.
+
+## 2026-07-21 - Considered an entity-relationship graph for FP reduction; rejected for the current NO-GO, redirected to targeted detector fixes
+
+**Context:** a parallel architecture-review session in the `hekton` factory repo (working on
+the masking-proxy pivot's next steps) proposed a graph-db-backed entity-relationship layer to
+reduce false positives via co-occurrence signal (e.g. "this token clusters with known `PERSON`
+entities elsewhere, so it's more likely a real name"). Before scoping that as a plan, checked
+it against this repo's actual, current T10 data rather than assuming the FP class it targets.
+
+**Finding:** it doesn't target the current NO-GO driver. Post-fix (T10 doubt-pass round 2,
+2026-07-19), the un-dilutable benign-slice numerator is **entropy: 1 (a commit SHA), phone: 2
+(ISBN/zip)** — format-collision (a string that matches a detector's pattern but is something
+else entirely), not entity ambiguity. There is also no dedicated person/name detector in
+`vg-detectors/src/` yet (`email.rs`, `entropy.rs`, `iban_sortcode.rs`, `ip.rs`, `phone.rs`
+only) — `EntityType::Person` exists in `vg-core`'s type system but nothing currently produces
+it, so a graph built to disambiguate person-name co-occurrence would sit on top of a
+capability that isn't built, aimed at findings that aren't the ones failing the gate.
+
+**Decision:** do not build the entity-relationship graph as the T10 close-out. Redirect to
+targeted, deterministic detector fixes — same shape as the 2026-07-16 entropy/phone hybrid
+patch that closed the prior dominant FP class: SHA-shape exclusion in `EntropyDetector`,
+ISBN-checksum + zip-shape exclusion in `PhoneDetector`. Recorded as the concrete next action
+(`docs/next-actions.md`); RISK-0004 updated in `docs/risks.md`.
+
+**The graph idea is not discarded, only deferred and honestly re-scoped.** It may earn its
+place later if/when a person/name detector is built and person-name ambiguity becomes a real
+measured FP class — at that point it would be a legitimate, separate `vg-core`
+detection-stage enhancement (co-occurrence signal feeding, never solely deciding, a
+mask/no-mask call — a promote-only discipline mirroring the masking-proxy plan's own H1 rule
+that a cache/signal must never be trusted as a substitute for a completed detection pass).
+Documented as a speculative, unscheduled companion plan in the `hekton` factory repo
+(`docs/plans/veilgremlin-entity-graph-plan-v1.md`), explicitly labelled as NOT the current
+precision fix.
+
+**Why this matters beyond this one call:** the graph idea was plausible on its face, and the
+human had already agreed to scope it before this grounding check ran — a reminder that
+"grounded against the merged repo" (this project's own stated authoring discipline for plans,
+see the masking-proxy-plan's author line) has to mean actually reading the current data, not
+just the shape of a plausible-sounding mechanism.

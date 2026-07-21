@@ -1068,3 +1068,26 @@ gates all pass. Full detail in decisions.md. Validation: 221 tests / 0 failures;
 
 ### Mind-palace updated
 - No (vault mutation not authorised).
+
+## Session: FP-reduction graph idea checked against real T10 data; redirected to targeted detector fixes
+
+**Date:** 2026-07-21
+
+A `hekton` factory-repo architecture-review session (masking-proxy pivot follow-up) proposed a
+graph-db entity-relationship layer to cut false positives via co-occurrence signal. Checked it
+against this repo's actual current T10 numbers before writing it up as a plan: the live NO-GO
+driver (T10 doubt-pass round 2, 2026-07-19, un-dilutable benign-slice numerator) is entropy: 1
+(a commit SHA) and phone: 2 (ISBN/zip) — format-collision, not entity ambiguity — and there is
+no person/name detector in `vg-detectors/src/` yet for a co-occurrence graph to enhance.
+Redirected: `docs/decisions.md`, `docs/risks.md` (RISK-0004), and `docs/next-actions.md`
+updated with a concrete targeted fix (SHA-shape exclusion in `EntropyDetector`, ISBN-checksum +
+zip-shape exclusion in `PhoneDetector`) as the real T10 close-out; the graph idea is documented
+as deferred, speculative future work in the `hekton` repo's
+`docs/plans/veilgremlin-entity-graph-plan-v1.md`, not built here. No code touched this session.
+
+### Validation
+N/A — documentation-only change (`docs/decisions.md`, `docs/risks.md`, `docs/next-actions.md`,
+this entry); no code, no build, no `vg bench` run.
+
+### Mind-palace updated
+- No (vault mutation not authorised).

@@ -22,9 +22,17 @@ demask logic, vault, detectors, pipeline, and tool-path masking are all validate
       friction). This is what turns the proven mechanism into a product that actually solves the
       governance/risk/privacy problem. The already-deferred "route masked request to Bedrock" /
       LiteLLM-gateway warm path. **#1 — nothing above it.**
-- [ ] **Close the precision NO-GO.** The T10 eval returned false-positive-rate **16.7%** against
-      the `<3%` gate (entropy 13.3%, phone 40%). Reduce entropy and phone false positives, then
-      re-run `vg bench`. See RISK-0004 and the 2026-07-18 T10 entry in `docs/decisions.md`.
+- [ ] **Close the precision NO-GO — now down to two concrete cases, not a broad class.**
+      Post-fix (T10 doubt-pass round 2, 2026-07-19), the un-dilutable benign-slice numerator is
+      **entropy: 1 (a commit SHA), phone: 2 (ISBN/zip)** — format-collision, not entity
+      ambiguity. Recommended fix (targeted, same shape as the 2026-07-16 entropy/phone hybrid
+      patch — an entity-relationship-graph approach was considered and rejected for this gate,
+      see the 2026-07-21 decision): (a) `EntropyDetector` — exclude strings matching a git-SHA
+      shape (hex charset, 7 or 40 chars, optionally corroborated by adjacency to
+      "commit"/"sha"/"rev"); (b) `PhoneDetector` — validate ISBN-10/13 check digits and
+      recognize zip/postal-code shape (digit count/format distinct from a phone number) and
+      exclude matches. Re-run `vg bench` after. See RISK-0004 and the 2026-07-19 T10 doubt-pass
+      round 2 entry in `docs/decisions.md`.
 - [ ] **Fix the display-collision corruption** (1 of 3 mask→demask round-trips). Implement
       collision-avoiding minting at intern time (skip an ordinal whose display already occurs in
       the raw text), as the T09 doubt-round and T10 eval both recommended, now with data.

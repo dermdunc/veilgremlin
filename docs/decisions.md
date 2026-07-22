@@ -2350,3 +2350,49 @@ the next cycle returns only trivial findings"). This one didn't. Still landed on
 round 4 runs is the human's call, but three consecutive rounds each surfacing real, non-trivial
 findings is itself informative about how much confidence a "vg bench says GO" result alone
 should carry for this class of change.
+
+## 2026-07-22 - Doubt-driven-development round 4 (single-model, targeted at round 3's own fix code): the STOP signal round
+
+**Targeted, not a full re-review:** reviewed only the code round 3 changed (`is_structured_identifier`'s
+both-sides-`is_structured_segments` check in `entropy.rs`; `preceded_by_marker_within`'s
+absolute-buffer-position boundary logic and `expand_to_digit_hyphen_run`'s `.`-reversion in
+`phone.rs`).
+
+**This round's findings are qualitatively different from rounds 1-3 — the signal itself worth
+recording, not just the findings:**
+
+- **A real gap, but not a new one.** `is_structured_segments` checks character CLASS per
+  segment, never whether a segment plausibly reads as a real word — so a secret with exactly
+  ONE incidental delimiter landing precisely on a letter/digit type boundary
+  (`AbCdEfGhIjKlMnOp-12345678`, 16 mixed-case letters + `-` + 8 digits, 4.64 bits/byte) still
+  passes, on either side of `=` or as a bare token. This is not a new hole round 3 opened — it
+  is the SAME residual this file already documented ("a real secret that happens to be a
+  dictionary-word passphrase joined by delimiters... would also be excluded... indistinguishable
+  from a real identifier without a dictionary/semantic check this detector doesn't have"),
+  restated with a sharper example. **Not fixed:** closing it would mean real word-likelihood
+  detection (e.g. rejecting per-letter-random case-switching) — a meaningfully bigger, riskier
+  change than anything else in this file's history of narrow fixes, and out of scope for a
+  detector deliberately not built as a dictionary/semantic checker. **What WAS fixed: the
+  round-3 doc comment overclaimed** ("by construction, not a threshold that has to be guessed")
+  beyond what the mechanism actually guarantees — corrected to name the residual honestly
+  instead.
+- **A latent, unreachable hardening gap, closed cheaply.** `preceded_by_marker_within` assumed
+  `pos <= buf.len()` without asserting it; every current call site satisfies this, so it isn't
+  live, but a function whose whole job is defending boundary conditions on adversarial input
+  shouldn't rely on caller discipline for its own bounds. Added the guard.
+- **A clean result on the `.`-reversion.** Confirmed, not assumed: traced every remaining branch
+  in `phone.rs` and found no path that reintroduces dot-based merging. First genuinely clean
+  sub-finding across four rounds.
+
+**This is the STOP signal the doubt-driven-development skill names.** Rounds 1-3 each found
+freely-fixable false-negative gaps — a cheap, targeted code change that closed a real leak
+without meaningful cost. Round 4 found one already-accepted, already-named residual restated
+more sharply (fixed the overclaiming comment, not the mechanism) and one defensive hardening
+with no live exploit path. Diminishing returns, not zero returns — informative in itself.
+
+`cargo test --workspace`, `clippy -D warnings`, `fmt --check` all clean; `vg bench` reconfirmed
+**GO** (FP rate still 0.0%) after this round too. **Recommendation to the human: this is a
+reasonable stop point** — 23 findings across four rounds, every freely-fixable false-negative
+gap closed, remaining surface is a named, accepted, dictionary-check-shaped limit consistent
+with this detector's stated design boundary. Still on `agent/claude/t10-fp-detector-fixes`,
+still not merged; human review and merge decision are next.

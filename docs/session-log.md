@@ -1190,3 +1190,32 @@ clean. `fmt --check`: clean. `vg bench`: GO, FP rate 0.0%, unchanged.
 
 ### Mind-palace updated
 - No (vault mutation not authorised).
+
+## Session: Doubt-driven-development round 4 — the STOP signal
+
+**Date:** 2026-07-22
+
+Asked again whether to stop or go once more; human chose one more round on round 3's own fix
+code. Single-model this time. Its findings were qualitatively different from rounds 1-3: no
+new freely-fixable false-negative gap. One finding restated an already-documented residual
+(`is_structured_segments` checks character class, not word-likelihood, so a secret with
+exactly one incidental delimiter on a letter/digit boundary still passes) more sharply than
+before — closed by correcting an overclaiming doc comment, not by changing the mechanism,
+since a real fix would need dictionary/word-likelihood detection this detector is
+deliberately not built to do. The other was a defensive bounds-check on an unreachable code
+path (every current call site already satisfies the invariant). This is the STOP condition
+the doubt-driven-development skill describes — recorded as a genuine signal, not just another
+findings count.
+
+23 findings across four rounds, every one that was a real, freely-fixable false-negative gap
+now closed with its own regression test. `vg bench` reconfirmed GO (FP 0.0%). Recommended to
+the human that this is a reasonable stop point; still on `agent/claude/t10-fp-detector-fixes`,
+still not merged — human review and the merge decision are next.
+
+### Validation
+`cargo test --workspace`: all green (71 vg-detectors tests, unchanged from round 3 — round 4
+added no new tests, only doc/hardening fixes). `clippy -D warnings`: clean. `fmt --check`:
+clean. `vg bench`: GO, FP rate 0.0%, unchanged.
+
+### Mind-palace updated
+- No (vault mutation not authorised).

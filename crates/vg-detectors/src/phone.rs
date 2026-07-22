@@ -166,7 +166,13 @@ fn expand_to_digit_hyphen_run(buf: &[u8], start: usize, end: usize) -> (usize, u
 /// marker proves the word is present, not that it is being used in the postal-code
 /// sense; the same class of ambiguity a human skimming the same text would also have.
 fn preceded_by_marker_within(buf: &[u8], pos: usize, window: usize, marker: &[u8]) -> bool {
-    if marker.is_empty() || marker.len() > pos {
+    // Round-4 doubt-pass finding: `pos <= buf.len()` was an unstated, unenforced
+    // invariant every current call site happens to satisfy (both derive `pos` from a
+    // non-empty regex match), but a function whose entire job is defending boundary
+    // conditions on adversarial input shouldn't rely on caller discipline for its own
+    // bounds -- a future call site passing an out-of-range `pos` would panic on the
+    // `buf[i..i + marker.len()]` slice below instead of returning a safe `false`.
+    if pos > buf.len() || marker.is_empty() || marker.len() > pos {
         return false;
     }
     let win_start = pos.saturating_sub(window);

@@ -136,11 +136,28 @@ fn is_token_byte(b: u8) -> bool {
 /// one. `LICENSE_KEY`/`API_KEY`/`AWS_SECRET_ACCESS_KEY` all decompose into >=2
 /// word-like segments and pass; a bare high-entropy run like
 /// `aB3dE5fG7hI9jK1lM2nP` or `zQ3v9Lm2Xp7RwT6uYbN8dKfJhC1sEoAi` has no internal
-/// delimiter, is exactly 1 segment, and fails -- by construction, not by a threshold that
-/// has to be guessed and re-guessed. **Accepted precision cost, not a leak risk:** a
-/// single-word key with no delimiter (`TOKEN=<benign-structured-value>`,
+/// delimiter, is exactly 1 segment, and fails. **Accepted precision cost, not a leak
+/// risk:** a single-word key with no delimiter (`TOKEN=<benign-structured-value>`,
 /// `KEY=<benign-structured-value>`) no longer qualifies for this exclusion either, since
 /// the key alone doesn't decompose -- over-masking in that narrow case, not under-masking.
+///
+/// **Round-4 doubt-pass finding: "by construction" above overclaimed.** This closes the
+/// *zero-delimiter* shape, not every shape. A secret with exactly ONE incidental
+/// delimiter landing precisely on a letter/digit type boundary still passes both this
+/// check and `is_structured_segments` directly (the same function guards the whole-token
+/// path too) -- `AbCdEfGhIjKlMnOp-12345678` (16 mixed-case letters + `-` + 8 digits,
+/// entropy 4.64 bits/byte) decomposes into one purely-alphabetic and one purely-numeric
+/// segment and is excluded, on either side of `=` or as a bare token. This is not a new
+/// gap this round introduced -- it is the SAME already-documented residual above
+/// ("Accepted residual, not fixed" on `is_structured_segments`, the dictionary-word-
+/// passphrase case) restated with a sharper example: `is_structured_segments` checks
+/// character CLASS per segment, never whether a segment plausibly reads as a real word,
+/// so any letters-only-then-digits-only (or vice versa) split defeats it regardless of
+/// how the letters are cased. Fixing this would mean adding real word-likelihood
+/// detection (e.g. rejecting per-letter-random case-switching, which no real identifier
+/// exhibits) -- a meaningfully bigger, riskier change than anything else in this file's
+/// history of narrow, targeted fixes, and out of scope for a detector that is
+/// deliberately not a dictionary/semantic checker. Accepted and named, not fixed.
 fn is_structured_identifier(token: &[u8]) -> bool {
     let Ok(s) = std::str::from_utf8(token) else {
         return false;

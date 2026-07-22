@@ -1091,3 +1091,131 @@ this entry); no code, no build, no `vg bench` run.
 
 ### Mind-palace updated
 - No (vault mutation not authorised).
+
+## Session: T10 precision fix implemented — vg bench verdict now GO locally; PR open, not merged
+
+**Date:** 2026-07-21
+
+Implemented the fix the previous session's redirect pointed at: `EntropyDetector` now excludes
+git-SHA-shaped tokens when corroborated by context (`commit`/`sha`/`rev`/`hash` immediately
+before a 7-64 char lowercase-hex token), and `PhoneDetector` now excludes ISBN-13/10 via
+checksum validation (expanding the regex's own partial match back out to the full digit/hyphen
+run first, since the regex's digit-group cap splits a real ISBN mid-number) and ZIP+4 via
+shape. A third, previously-undocumented residual (`LICENSE_KEY=ACME-2026-DEMO-KEY`, a value the
+corpus's own manifest already lists as an intentional, accepted entity-detection miss) surfaced
+on re-running the harness after the first two fixes and was closed too (`is_structured_identifier`
+now splits on `=`). Full reasoning and the safety argument for each (why it doesn't create a new
+false-negative class) are in `docs/decisions.md`.
+
+`vg bench` verdict: **GO** (false-positive-rate 0.0%, was 16.7%; every other gate unchanged).
+Masking proxy (#1 on the roadmap) and the display-collision corruption are unrelated and still
+open — this is not a ship decision. Landed on `agent/claude/t10-fp-detector-fixes`, PR open,
+**deliberately not merged** — this repo doubt-passes precision changes before they land, and a
+result looking clean isn't a reason to skip that this time.
+
+### Validation
+`cargo test --workspace`: all green. `cargo clippy --all-targets -- -D warnings`: clean.
+`cargo fmt --check`: clean. `vg bench` (with hook latency): GO, all gates PASS.
+
+### Mind-palace updated
+- No (vault mutation not authorised).
+
+## Session: Two doubt-driven-development rounds on the T10 fix — 14 findings, all closed
+
+**Date:** 2026-07-22
+
+Human asked whether a doubt pass had run against the T10 fix from the prior session — it
+hadn't. Ran the full doubt-driven-development cycle. **Round 1:** single-model fresh-context
+review (ARTIFACT + CONTRACT only), then a Codex cross-model second opinion on human request
+(`codex exec --sandbox read-only`, prompt piped via stdin). Reconciled together: 8 findings,
+including 2 Critical false-negative regressions confirmed with concrete counterexamples —
+`is_structured_identifier`'s `=` fix let a bare-alphabetic high-entropy secret value pass, and
+`looks_like_isbn10`'s checksum alone collided with ordinary NANP phone numbers (Codex's example:
+`415-234-0002`). Also escalated ZIP+4's shape-only exclusion to Critical for the same reason.
+All 8 fixed: value/key-side re-decomposition rules tightened, ISBN-10/ZIP+4 now require an
+explicit text marker (mirroring the git-SHA context-gate), dead-code `sha1`/`sha256` markers and
+the too-generic `hash` marker fixed/removed, `commit=<sha>`'s broken `=`-skip documented as a
+named scope limit, and the buffer-expansion helper bounded (`MAX_EXPAND`) against O(n^2)/
+cross-match risk on adversarial input.
+
+**Round 2:** targeted the NEW code round 1 introduced (not a full re-review) — single-model
+only this round. Found 6 more: the `=`-fix's key-side was still unchecked (symmetric to round
+1's finding), the marker search matched `zip` inside `gzip`/`unzip` (no word-boundary check),
+`MAX_EXPAND` only shrinks (doesn't eliminate) cross-match merging — documented as a named
+residual rather than further redesigned, plus two small correctness/defensive fixes. Every
+finding across both rounds got a regression test reproducing the reviewer's own counterexample.
+
+`cargo test --workspace`, `clippy -D warnings`, `fmt --check` all clean after every round; `vg
+bench` re-run and reconfirmed GO (FP 0.0%) after each. Still on
+`agent/claude/t10-fp-detector-fixes`, still not merged — cross-model was offered again for round
+2 per the doubt-driven-development skill's protocol; a third round is the human's call.
+
+### Validation
+`cargo test --workspace`: all green (66 vg-detectors tests, up from 63). `clippy -D warnings`:
+clean. `fmt --check`: clean. `vg bench`: GO, FP rate 0.0%, unchanged from before this session.
+
+### Mind-palace updated
+- No (vault mutation not authorised).
+
+## Session: Doubt-driven-development round 3 (Codex) — found a bug in round 2's own fix
+
+**Date:** 2026-07-22
+
+Human, asked to choose between stopping, running Codex on round 2's fixes, or merging as-is,
+chose the Codex round. It found 8 more issues, including the sharpest one yet: round 2's own
+fix for the key-side `=` gap (`MAX_ASSIGNMENT_KEY_LEN = 24`) was itself insufficient — a flat
+length bound couldn't distinguish a real 20-24 byte secret from a real identifier name
+(Codex's counterexample: `aB3dE5fG7hI9jK1lM2nP=run-2026-01-01`, entropy 4.53 bits/byte).
+Replaced with the same structural check already used everywhere else in the file (key must
+also decompose into >=2 word-like segments), closing it by construction rather than a
+threshold that needed re-guessing. Also found the round-2 word-boundary fix checked
+boundaries against the truncated search-window slice rather than the real buffer (a marker
+glued directly onto digits with zero separator could still pass), and that round 2's `.`
+addition to the expansion helper — meant as a precision improvement for dot-separated ISBNs —
+meaningfully widened the ISBN-13 cross-match-merge residual round 2 had already accepted as
+narrow; reverted rather than patched further, since the precision gain wasn't worth the
+widened false-negative surface. Full detail and reasoning per finding in `docs/decisions.md`.
+
+Every finding across all three rounds (22 total) has a regression test reproducing the
+reviewer's own counterexample. `vg bench` reconfirmed GO (FP 0.0%) after this round too. Still
+on `agent/claude/t10-fp-detector-fixes`, still not merged. Three consecutive rounds each
+surfacing real, non-trivial findings — round 3 targeted at round 2's own fix code and still
+found a genuine regression in it — is itself informative about how much a clean `vg bench`
+result alone should be trusted for this class of change; recorded plainly rather than treated
+as a reason to stop looking.
+
+### Validation
+`cargo test --workspace`: all green (71 vg-detectors tests, up from 66). `clippy -D warnings`:
+clean. `fmt --check`: clean. `vg bench`: GO, FP rate 0.0%, unchanged.
+
+### Mind-palace updated
+- No (vault mutation not authorised).
+
+## Session: Doubt-driven-development round 4 — the STOP signal
+
+**Date:** 2026-07-22
+
+Asked again whether to stop or go once more; human chose one more round on round 3's own fix
+code. Single-model this time. Its findings were qualitatively different from rounds 1-3: no
+new freely-fixable false-negative gap. One finding restated an already-documented residual
+(`is_structured_segments` checks character class, not word-likelihood, so a secret with
+exactly one incidental delimiter on a letter/digit boundary still passes) more sharply than
+before — closed by correcting an overclaiming doc comment, not by changing the mechanism,
+since a real fix would need dictionary/word-likelihood detection this detector is
+deliberately not built to do. The other was a defensive bounds-check on an unreachable code
+path (every current call site already satisfies the invariant). This is the STOP condition
+the doubt-driven-development skill describes — recorded as a genuine signal, not just another
+findings count.
+
+23 findings across four rounds, every one that was a real, freely-fixable false-negative gap
+now closed with its own regression test. `vg bench` reconfirmed GO (FP 0.0%). Recommended to
+the human that this is a reasonable stop point; still on `agent/claude/t10-fp-detector-fixes`,
+still not merged — human review and the merge decision are next.
+
+### Validation
+`cargo test --workspace`: all green (71 vg-detectors tests, unchanged from round 3 — round 4
+added no new tests, only doc/hardening fixes). `clippy -D warnings`: clean. `fmt --check`:
+clean. `vg bench`: GO, FP rate 0.0%, unchanged.
+
+### Mind-palace updated
+- No (vault mutation not authorised).

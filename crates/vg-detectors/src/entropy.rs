@@ -104,10 +104,108 @@ fn is_token_byte(b: u8) -> bool {
 /// segments mix letters and digits (the vast majority of real base64/hex/API-key
 /// shapes) is unaffected, since a mixed segment is neither purely alphabetic nor purely
 /// numeric and fails this exclusion.
+/// **`=` handling redesigned (2026-07-22 doubt-pass fix, closing a Critical finding from
+/// both a single-model and a Codex cross-model review).** The 2026-07-21 version simply
+/// added `=` to the split set alongside `/`, `.`, `_`, `-` -- but that let a `KEY=value`
+/// token pass whenever its VALUE was a single run of letters with no further delimiter,
+/// even a genuinely high-entropy one: `TOKEN=zQvLmXpRwTuYbNdKfJhCsEoAiPlMnQr` (bare,
+/// alphabetic, no internal structure) was being silently excluded -- a real
+/// false-negative regression, not the intended fix. **Fix:** `=` is handled as its own,
+/// narrower case: the whole token must independently fail the ordinary structured check
+/// first; only then is a `KEY=VALUE` split considered, and even then the VALUE half must
+/// ITSELF re-decompose into >=2 further segments via `is_structured_segments` (the same
+/// rule applied to everything else) -- so `LICENSE_KEY=ACME-2026-DEMO-KEY` still excludes
+/// (value `ACME-2026-DEMO-KEY` has 4 further segments), but a bare single-run value like
+/// `xKrTqYbWmZjLpNsFhDvGc` does not (no further segments, `segments.len() < 2` in
+/// `is_structured_segments`, same guard that already protects the general case).
+///
+/// **Round-2 doubt-pass finding: the key side needed a bound too.** The key was
+/// originally left unchecked on the theory that it's "almost always a benign identifier
+/// in practice" -- but that's an assumption, not a guarantee, and the shape is
+/// symmetric: `zQ3v9Lm2Xp7RwT6uYbN8dKfJhC1sEoAi=run-2026-01-01` has the real secret on
+/// the KEY side and a benign-looking VALUE side, and a value-only check would have
+/// waved it through.
+///
+/// **Round-3 doubt-pass finding, closed: the round-2 length-cap fix was itself
+/// insufficient.** A flat `key.len() <= 24` bound still let a realistic 20-24 byte
+/// high-entropy secret through as a "key" -- `aB3dE5fG7hI9jK1lM2nP=run-2026-01-01` (a
+/// 20-byte key, right at `DEFAULT_MIN_LENGTH`) passed the cap while looking nothing like
+/// a real identifier. Length alone cannot distinguish a secret from a name. **Fix:**
+/// require the KEY to independently satisfy `is_structured_segments` too -- the exact
+/// same rule already applied to the value and to everything else in this file, not a new
+/// one. `LICENSE_KEY`/`API_KEY`/`AWS_SECRET_ACCESS_KEY` all decompose into >=2
+/// word-like segments and pass; a bare high-entropy run like
+/// `aB3dE5fG7hI9jK1lM2nP` or `zQ3v9Lm2Xp7RwT6uYbN8dKfJhC1sEoAi` has no internal
+/// delimiter, is exactly 1 segment, and fails. **Accepted precision cost, not a leak
+/// risk:** a single-word key with no delimiter (`TOKEN=<benign-structured-value>`,
+/// `KEY=<benign-structured-value>`) no longer qualifies for this exclusion either, since
+/// the key alone doesn't decompose -- over-masking in that narrow case, not under-masking.
+///
+/// **Round-4 doubt-pass finding: "by construction" above overclaimed.** This closes the
+/// *zero-delimiter* shape, not every shape. A secret with exactly ONE incidental
+/// delimiter landing precisely on a letter/digit type boundary still passes both this
+/// check and `is_structured_segments` directly (the same function guards the whole-token
+/// path too) -- `AbCdEfGhIjKlMnOp-12345678` (16 mixed-case letters + `-` + 8 digits,
+/// entropy 4.64 bits/byte) decomposes into one purely-alphabetic and one purely-numeric
+/// segment and is excluded, on either side of `=` or as a bare token. This is not a new
+/// gap this round introduced -- it is the SAME already-documented residual above
+/// ("Accepted residual, not fixed" on `is_structured_segments`, the dictionary-word-
+/// passphrase case) restated with a sharper example: `is_structured_segments` checks
+/// character CLASS per segment, never whether a segment plausibly reads as a real word,
+/// so any letters-only-then-digits-only (or vice versa) split defeats it regardless of
+/// how the letters are cased. Fixing this would mean adding real word-likelihood
+/// detection (e.g. rejecting per-letter-random case-switching, which no real identifier
+/// exhibits) -- a meaningfully bigger, riskier change than anything else in this file's
+/// history of narrow, targeted fixes, and out of scope for a detector that is
+/// deliberately not a dictionary/semantic checker. Accepted and named, not fixed.
 fn is_structured_identifier(token: &[u8]) -> bool {
     let Ok(s) = std::str::from_utf8(token) else {
         return false;
     };
+    if is_structured_segments(s) {
+        return true;
+    }
+    if let Some((key, value)) = s.split_once('=') {
+        if !key.is_empty()
+            && !value.is_empty()
+            && is_structured_segments(key)
+            && is_structured_segments(value)
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Excludes a string that decomposes entirely into word-like or short-numeric segments
+/// when split on structural delimiters (`/`, `.`, `_`, `-`) -- covers file paths
+/// (`scripts/gateway-run.sh`), snake_case/kebab-case identifiers
+/// (`requires_confirmation`, `local-coding-harness`), and structured operational IDs
+/// (`run-20260608-EG-012`) uniformly, rather than an unstructured secret.
+///
+/// **2026-07-16 census finding, corrected after measurement:** an initial version of
+/// this exclusion assumed structured internal run IDs were the dominant
+/// false-positive shape. Measuring the *actual* matched tokens (via a temporary local
+/// debug print against real internal-tooling content, never committed) showed that
+/// assumption was wrong: on that specific fixed content, the fix only removed 1 of 1849
+/// entropy findings. The real dominant classes were file paths and
+/// snake_case/kebab-case code identifiers -- `is_token_byte` treats `/`, `.`, and `_` as
+/// part of a token (not a delimiter), so a whole path or identifier is scored for
+/// entropy as one blob, and the resulting mix of letters/case/punctuation clears the
+/// threshold even though every piece is an ordinary word. This version fixes that:
+/// splitting on the token's own internal delimiters and requiring every resulting piece
+/// to be purely alphabetic (any length -- these are word-like labels, not random blobs)
+/// or purely numeric (<=8 digits -- dates/ordinals) catches paths and identifiers
+/// generically, not via a Hekton-specific dictionary.
+///
+/// **Accepted residual, not fixed:** a real secret that happens to be a
+/// dictionary-word passphrase joined by delimiters (e.g. `correct-horse-battery-staple`)
+/// would also be excluded by this rule -- indistinguishable from a real identifier
+/// without a dictionary/semantic check this detector doesn't have. A secret whose
+/// segments mix letters and digits (the vast majority of real base64/hex/API-key
+/// shapes) is unaffected, since a mixed segment is neither purely alphabetic nor purely
+/// numeric and fails this exclusion.
+fn is_structured_segments(s: &str) -> bool {
     // Empty segments (a leading/trailing delimiter, e.g. the dotfile in
     // `.hekton/risk-register.yaml`, or a doubled delimiter) are common and not
     // themselves suspicious -- filtered out rather than treated as disqualifying.
@@ -124,6 +222,76 @@ fn is_structured_identifier(token: &[u8]) -> bool {
         let all_digit = bytes.iter().all(|b| b.is_ascii_digit());
         all_alpha || (all_digit && bytes.len() <= 8)
     })
+}
+
+/// Case-insensitive markers that, immediately before a hex-shaped token (skipping a
+/// single separator like `:`/whitespace), corroborate "this is a git object hash", not a
+/// secret. **`hash` removed (2026-07-22 doubt-pass fix):** too generic -- it matches as
+/// the tail of extremely common compound identifiers that hold real sensitive values
+/// (`password_hash:`, `file_hash:`, `content_hash:`), since the backward word-scan stops
+/// at the underscore and captures only `hash`. `commit`/`sha`/`sha1`/`sha256`/`rev` are
+/// much more specifically git-related and were not shown to have the same problem.
+const GIT_SHA_CONTEXT_WORDS: [&[u8]; 5] = [b"commit", b"sha1", b"sha256", b"sha", b"rev"];
+
+/// Whether the word immediately preceding `start` in `buf` (after skipping ordinary
+/// separator bytes: space, tab, `:`) case-insensitively matches a git-SHA context marker.
+///
+/// **`=` removed from the skipped separators (2026-07-22 doubt-pass fix, Codex finding).**
+/// `=` is a token byte (`is_token_byte`), so the entropy detector's own tokenizer never
+/// splits `commit=<hex>` into two tokens in the first place -- `start` never points at
+/// just the hex portion, so a `=`-skip here was unreachable dead code, not a working
+/// feature. **Accepted scope limit, named rather than silently broken:** `commit=<sha>`
+/// is not excluded via this path (`:`/whitespace-separated forms like `commit: <sha>` and
+/// `commit <sha>` work correctly, since those separators are not token bytes). A
+/// `commit=<sha>` value falls through to ordinary entropy scoring instead, where the
+/// low-entropy `commit=` prefix diluting the merged token below threshold is a
+/// pre-existing, already-documented residual of `is_token_byte` treating `=` as part of a
+/// token (see the module-level doc comment above), not a new risk introduced here.
+fn preceded_by_git_sha_context(buf: &[u8], start: usize) -> bool {
+    let mut i = start;
+    while i > 0 && matches!(buf[i - 1], b' ' | b'\t' | b':') {
+        i -= 1;
+    }
+    let word_end = i;
+    while i > 0 && buf[i - 1].is_ascii_alphanumeric() {
+        i -= 1;
+    }
+    let word = &buf[i..word_end];
+    GIT_SHA_CONTEXT_WORDS
+        .iter()
+        .any(|w| word.eq_ignore_ascii_case(w))
+}
+
+/// Excludes a token from `Secret` classification when it is shaped like a git object
+/// hash (7-64 lowercase hex characters -- covers abbreviated and full SHA-1/SHA-256
+/// object IDs) **and** is immediately preceded by a git-hash context word (`commit`,
+/// `sha`, `sha1`, `sha256`, `rev`). Deliberately narrow on both axes, not a blanket
+/// hex-shape carve-out (2026-07-21, closing the T10 residual FP: `docs/decisions.md`,
+/// benign-slice entropy finding = 1, a commit SHA):
+///
+/// - **Length + charset alone is not enough.** Many real secrets (session tokens, some
+///   API keys) are themselves lowercase hex of a length that would collide with a SHA;
+///   excluding every such token regardless of context would reopen a false-negative hole
+///   this detector exists to avoid -- worse than the false positive being fixed.
+/// - **Context alone is not enough either.** A token that merely follows the word
+///   "commit" but isn't hex-shaped (e.g. a non-hex build identifier) is left to the
+///   normal entropy/structured-identifier logic, unaffected by this exclusion.
+/// - **Accepted residual:** a real secret that is coincidentally pure lowercase hex AND
+///   immediately preceded by one of these context words (e.g. `commit token: <hex
+///   secret>`) would be missed. Narrow and named, not fixed here -- the same posture
+///   this file already takes with its other documented residuals.
+fn looks_like_git_sha(buf: &[u8], start: usize, token: &[u8]) -> bool {
+    let len = token.len();
+    if !(7..=64).contains(&len) {
+        return false;
+    }
+    if !token
+        .iter()
+        .all(|&b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return false;
+    }
+    preceded_by_git_sha_context(buf, start)
 }
 
 fn shannon_entropy_bits_per_byte(token: &[u8]) -> f64 {
@@ -198,6 +366,9 @@ impl Detector for EntropyDetector {
                 continue;
             }
             if is_structured_identifier(token) {
+                continue;
+            }
+            if looks_like_git_sha(buf, start, token) {
                 continue;
             }
             let entropy = shannon_entropy_bits_per_byte(token);
@@ -330,6 +501,137 @@ mod tests {
     fn satisfies_the_detector_contract() {
         let buf = b"export API_KEY=zQ3v9Lm2Xp7RwT6uYbN8dKfJhC1sEoAi and plain text";
         assert_detector_contract(&EntropyDetector::default(), buf, &[]);
+    }
+
+    #[test]
+    fn ignores_a_license_key_shaped_env_assignment() {
+        // A second T10 residual (docs/decisions.md, 2026-07-21), surfaced only after the
+        // commit-SHA fix: `=` wasn't a split delimiter, so this whole assignment scored as
+        // one entropy blob even though both sides are word/numeric-shaped.
+        let buf = b"LICENSE_KEY=ACME-2026-DEMO-KEY";
+        assert!(EntropyDetector::default().detect(buf, &[]).is_empty());
+    }
+
+    #[test]
+    fn still_flags_a_real_secret_after_an_equals_sign() {
+        // Same `KEY=value` shape, but the value mixes letters and digits -- must not be
+        // swallowed by the `=` split added for the LICENSE_KEY case above.
+        let buf = b"API_KEY=zQ3v9Lm2Xp7RwT6uYbN8dKfJhC1sEoAi";
+        assert_eq!(EntropyDetector::default().detect(buf, &[]).len(), 1);
+    }
+
+    #[test]
+    fn still_flags_a_secret_on_the_key_side_of_an_equals_sign() {
+        // Round-2 doubt-pass finding: the `=` fix only checked the VALUE side, so a real
+        // secret sitting on the KEY side with a benign-looking value would have been
+        // silently excluded.
+        let buf = b"zQ3v9Lm2Xp7RwT6uYbN8dKfJhC1sEoAi=run-2026-01-01";
+        assert_eq!(
+            EntropyDetector::default().detect(buf, &[]).len(),
+            1,
+            "a real secret on the key side of `=` must still be flagged"
+        );
+    }
+
+    #[test]
+    fn still_flags_a_short_high_entropy_key_side_secret() {
+        // Round-3 doubt-pass finding (Codex): the round-2 length-cap fix (key.len() <=
+        // 24) still let a realistic 20-24 byte secret through as a "key" -- a flat
+        // length bound can't distinguish a secret from a name. This 20-byte key would
+        // have passed the old cap; the current fix (key must independently decompose
+        // via is_structured_segments) rejects it because it has no internal delimiter.
+        let buf = b"aB3dE5fG7hI9jK1lM2nP=run-2026-01-01";
+        assert_eq!(
+            EntropyDetector::default().detect(buf, &[]).len(),
+            1,
+            "a 20-byte high-entropy key with no internal delimiter must still be flagged"
+        );
+    }
+
+    #[test]
+    fn ignores_a_multi_segment_key_and_value_assignment() {
+        // Confirms the symmetric fix still catches the real target case: both sides
+        // decompose into >=2 word-like segments, same as a real AWS-style env var name.
+        let buf = b"AWS_SECRET_ACCESS_KEY=demo-placeholder-value";
+        assert!(EntropyDetector::default().detect(buf, &[]).is_empty());
+    }
+
+    #[test]
+    fn still_flags_a_bare_alphabetic_secret_after_an_equals_sign() {
+        // 2026-07-22 doubt-pass Critical finding (single-model + Codex, independently):
+        // the 2026-07-21 fix split on `=` unconditionally, so a VALUE that is a single
+        // run of letters with no further delimiter -- still genuinely high-entropy --
+        // was being excluded just for being alphabetic. Must still be flagged: the value
+        // has no further `is_structured_segments` decomposition of its own.
+        let buf = b"TOKEN=zQvLmXpRwTuYbNdKfJhCsEoAiPlMnQr";
+        assert_eq!(
+            EntropyDetector::default().detect(buf, &[]).len(),
+            1,
+            "a bare alphabetic high-entropy value after `=` must still be flagged"
+        );
+    }
+
+    #[test]
+    fn ignores_a_commit_sha_with_git_context() {
+        // The exact T10 benign-lookalike residual (docs/decisions.md, 2026-07-21):
+        // a full 40-char lowercase-hex SHA-1 immediately preceded by "commit".
+        let buf = b"commit 17b27d5c8f9e2a1b3d4c5e6f7a8b9c0d1e2f3a4b merged on 2026-07-18";
+        assert!(EntropyDetector::default().detect(buf, &[]).is_empty());
+    }
+
+    #[test]
+    fn still_flags_a_hex_looking_secret_with_no_git_context() {
+        // Same shape (lowercase hex, SHA-length), no context word -- must NOT be
+        // excluded by a blanket hex-shape carve-out.
+        let buf = b"token=17b27d5c8f9e2a1b3d4c5e6f7a8b9c0d1e2f3a4b";
+        assert_eq!(EntropyDetector::default().detect(buf, &[]).len(), 1);
+    }
+
+    #[test]
+    fn still_flags_a_non_hex_token_after_the_word_commit() {
+        // Context word present, but the token itself isn't hex-shaped -- the context
+        // exclusion must not swallow ordinary high-entropy secrets that merely follow
+        // the word "commit" in prose.
+        let buf = b"commit token zQ3v9Lm2Xp7RwT6uYbN8dKfJhC1sEoAi applied";
+        assert_eq!(EntropyDetector::default().detect(buf, &[]).len(), 1);
+    }
+
+    #[test]
+    fn git_sha_context_words_are_case_insensitive_and_tolerate_a_colon() {
+        let buf = b"Commit: 17b27d5c8f9e2a1b3d4c5e6f7a8b9c0d1e2f3a4b";
+        assert!(EntropyDetector::default().detect(buf, &[]).is_empty());
+    }
+
+    #[test]
+    fn sha1_and_sha256_context_words_now_actually_fire() {
+        // 2026-07-22 doubt-pass High finding (single-model + Codex, independently): the
+        // backward word-scan was alphabetic-only, so it stopped at the first digit and
+        // could never extract "sha1"/"sha256" as a whole word -- dead code, unreachable
+        // by construction. A 64-char lowercase-hex token (SHA-256 length) after "sha256:"
+        // and a 40-char one after "sha1:" must both now be excluded.
+        let sha1_buf = b"sha1: 17b27d5c8f9e2a1b3d4c5e6f7a8b9c0d1e2f3a4b";
+        assert!(EntropyDetector::default().detect(sha1_buf, &[]).is_empty());
+        let sha256_buf =
+            b"sha256: 17b27d5c8f9e2a1b3d4c5e6f7a8b9c0d1e2f3a4b17b27d5c8f9e2a1b3d4c5e6f";
+        assert!(EntropyDetector::default()
+            .detect(sha256_buf, &[])
+            .is_empty());
+    }
+
+    #[test]
+    fn still_flags_a_hex_secret_after_the_removed_hash_marker() {
+        // 2026-07-22 doubt-pass High finding (single-model + Codex, independently):
+        // "hash" was too generic -- it matched as the tail of extremely common compound
+        // identifiers holding real sensitive values (`password_hash:`, `file_hash:`),
+        // since the backward scan stops at `_` and captures only "hash". Removed from
+        // GIT_SHA_CONTEXT_WORDS entirely; both forms must now be flagged.
+        let buf = b"hash: 17b27d5c8f9e2a1b3d4c5e6f7a8b9c0d1e2f3a4b";
+        assert_eq!(EntropyDetector::default().detect(buf, &[]).len(), 1);
+        let compound_buf = b"password_hash: 17b27d5c8f9e2a1b3d4c5e6f7a8b9c0d1e2f3a4b";
+        assert_eq!(
+            EntropyDetector::default().detect(compound_buf, &[]).len(),
+            1
+        );
     }
 
     #[test]

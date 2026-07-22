@@ -87,22 +87,83 @@ fn looks_like_iso_date(matched: &[u8]) -> bool {
     (1900..=2099).contains(&y) && (1..=12).contains(&m) && (1..=31).contains(&d)
 }
 
-/// Expands a match's byte range to the full contiguous run of digits/hyphens in `buf`,
-/// walking left and right from the match bounds. The phone regex's per-group digit cap
-/// (`{2,4}`) can split a longer structured number -- an ISBN-13's `978-3-16-148410-0`
-/// matches this detector's pattern only as the inner fragment `3-16-148410`, starting
-/// and ending mid-number -- so checksum validation needs the WHOLE number, not just the
-/// regex's own match span.
+/// Maximum bytes `expand_to_digit_hyphen_run` walks in each direction. Generous enough
+/// for any realistic ISBN (17 bytes worst case: 13 digits + 4 hyphens), while bounding
+/// the cost of a single expansion on an adversarial digit/hyphen-heavy buffer --
+/// unbounded expansion is O(n) per match with up to O(n) matches possible in one buffer,
+/// an O(n^2) risk on a hot path with a 25ms p95 budget (2026-07-22 doubt-pass finding,
+/// single-model + Codex, independently).
+///
+/// **Round-2 doubt-pass finding, named but not further fixed: this bounds, it does not
+/// eliminate, cross-match merging.** Two genuinely separate values joined by nothing but
+/// digits/hyphens (no space, comma, or other separator between them) within the 24-byte
+/// window can still merge into one candidate that coincidentally satisfies the ISBN-13
+/// checksum -- which requires no text marker, unlike the ISBN-10/ZIP+4 paths below. This
+/// only fires when the two values are truly byte-adjacent (any other separator character
+/// stops the walk immediately), which is narrower than "any content within 24 bytes";
+/// closing it further would mean bounding expansion by the regex's own group-count
+/// structure rather than raw byte distance, a larger change not made here. Accepted,
+/// named residual -- the same posture this file takes elsewhere.
+const MAX_EXPAND: usize = 24;
+
+/// Expands a match's byte range to the contiguous run of digits/hyphens/dots in `buf`
+/// (bounded by `MAX_EXPAND` each direction), walking left and right from the match
+/// bounds. The phone regex's per-group digit cap (`{2,4}`) can split a longer structured
+/// number -- an ISBN-13's `978-3-16-148410-0` matches this detector's pattern only as
+/// the inner fragment `3-16-148410`, starting and ending mid-number -- so checksum
+/// validation needs the WHOLE number, not just the regex's own match span. Matches `.` as
+/// well as `-` (round-2 doubt-pass finding: the original digit/hyphen-only set was
+/// asymmetric with the phone regex's own `[-. ]` separator class, under-recognizing a
+/// dot-separated ISBN like `978.3.16.148410.0`).
 fn expand_to_digit_hyphen_run(buf: &[u8], start: usize, end: usize) -> (usize, usize) {
     let mut s = start;
-    while s > 0 && matches!(buf[s - 1], b'0'..=b'9' | b'-') {
+    let floor = start.saturating_sub(MAX_EXPAND);
+    while s > floor && matches!(buf[s - 1], b'0'..=b'9' | b'-' | b'.') {
         s -= 1;
     }
     let mut e = end;
-    while e < buf.len() && matches!(buf[e], b'0'..=b'9' | b'-') {
+    let ceil = (end + MAX_EXPAND).min(buf.len());
+    while e < ceil && matches!(buf[e], b'0'..=b'9' | b'-' | b'.') {
         e += 1;
     }
     (s, e)
+}
+
+/// Case-insensitive, whole-word search for `marker` within the `window` bytes
+/// immediately preceding `pos` in `buf`. Used to corroborate the two checksum/shape
+/// exclusions below that, unlike ISBN-13's 978/979-prefixed checksum, are not narrow
+/// enough alone: ISBN-10 has no prefix to cut its ~1-in-11 checksum-collision rate
+/// against real phone numbers, and a bare `DDDDD-DDDD` shape cannot be told apart from
+/// some non-NANP phone formatting (2026-07-22 doubt-pass findings, single-model + Codex,
+/// independently -- Codex's concrete counterexample: `415-234-0002`, an ordinary
+/// NANP-shaped number, passes the ISBN-10 checksum outright).
+///
+/// **Word-boundary checked (round-2 doubt-pass finding, closed):** a plain substring
+/// search matched `zip` inside `gzip`/`unzip`, which would wrongly exclude a real 5-4
+/// grouped number sitting near either word. Requires the byte immediately before and
+/// after the match to be absent or non-alphanumeric. **Accepted residual, not fixed:**
+/// `zip` as its own standalone word can still be present for an unrelated reason (e.g.
+/// "extract the zip" before an unrelated ticket number) -- the marker proves the word is
+/// present, not that it is being used in the postal-code sense; the same class of
+/// ambiguity a human skimming the same text would also have.
+fn preceded_by_marker_within(buf: &[u8], pos: usize, window: usize, marker: &[u8]) -> bool {
+    if marker.is_empty() {
+        return false;
+    }
+    let start = pos.saturating_sub(window);
+    let haystack = &buf[start..pos];
+    if marker.len() > haystack.len() {
+        return false;
+    }
+    haystack.windows(marker.len()).enumerate().any(|(i, w)| {
+        if !w.eq_ignore_ascii_case(marker) {
+            return false;
+        }
+        let left_ok = i == 0 || !haystack[i - 1].is_ascii_alphanumeric();
+        let right_idx = i + marker.len();
+        let right_ok = right_idx >= haystack.len() || !haystack[right_idx].is_ascii_alphanumeric();
+        left_ok && right_ok
+    })
 }
 
 /// Validates an ISBN-13 checksum: exactly 13 digits, a `978`/`979` (Bookland EAN)
@@ -127,10 +188,14 @@ fn looks_like_isbn13(digits: &[u32]) -> bool {
 }
 
 /// Validates an ISBN-10 checksum: exactly 10 digits, weighted sum (`d1*10 + d2*9 + ... +
-/// d10*1`) divisible by 11. **Scope note:** only the all-digit form is handled -- an
-/// ISBN-10 whose check digit is the literal character `X` (representing 10) doesn't
-/// match this detector's digit-only pattern in the first place, so it never reaches
-/// this function; accepted as a named residual, not fixed here.
+/// d10*1`) divisible by 11. **Checksum alone is deliberately NOT sufficient** to exclude
+/// a match on this -- see `looks_like_isbn`'s marker requirement. **Scope note:** only
+/// the all-digit form is handled here -- an ISBN-10 whose check digit is the literal
+/// character `X` (representing 10) doesn't match this detector's digit-only pattern, so
+/// its numeric prefix never reaches a valid 10-digit checksum via this function; that
+/// case is instead covered by the same "isbn" marker requirement below (an `ISBN
+/// ...-X`-labelled number is excluded because the marker is present, independent of the
+/// checksum path), so it isn't a silent gap in practice.
 fn looks_like_isbn10(digits: &[u32]) -> bool {
     if digits.len() != 10 {
         return false;
@@ -144,7 +209,14 @@ fn looks_like_isbn10(digits: &[u32]) -> bool {
 }
 
 /// Excludes a match whose *expanded* digit/hyphen run (§`expand_to_digit_hyphen_run`)
-/// passes an ISBN-13 or ISBN-10 checksum.
+/// passes an ISBN-13 or ISBN-10 checksum. **ISBN-13 is checksum-only** (its 978/979
+/// prefix already narrows real-phone-number collisions to roughly 1-in-5000). **ISBN-10
+/// additionally requires an "isbn" text marker** within a short lookback window of the
+/// expanded run's start (2026-07-22 doubt-pass fix, Critical finding closed): ISBN-10 has
+/// no prefix, so its mod-11 checksum alone collides with ordinary NANP-shaped phone
+/// numbers roughly 1-in-11 -- confirmed concretely against `415-234-0002`, which passes
+/// the checksum with no marker present. Requiring the label is the same conservative,
+/// context-gated posture already used for the git-SHA exclusion in `entropy.rs`.
 fn looks_like_isbn(buf: &[u8], m_start: usize, m_end: usize) -> bool {
     let (s, e) = expand_to_digit_hyphen_run(buf, m_start, m_end);
     let digits: Vec<u32> = buf[s..e]
@@ -152,16 +224,23 @@ fn looks_like_isbn(buf: &[u8], m_start: usize, m_end: usize) -> bool {
         .filter(|b| b.is_ascii_digit())
         .map(|&b| u32::from(b - b'0'))
         .collect();
-    looks_like_isbn13(&digits) || looks_like_isbn10(&digits)
+    if looks_like_isbn13(&digits) {
+        return true;
+    }
+    looks_like_isbn10(&digits) && preceded_by_marker_within(buf, s, 16, b"isbn")
 }
 
 /// Excludes matches shaped like a US ZIP+4 postal code (`DDDDD-DDDD`): exactly two
 /// digit groups of length 5 and 4 joined by a single hyphen, and nothing else in the
-/// match. Real phone numbers essentially never group as 5-then-4 (US/international
-/// numbers group in 2-4 digit runs with an area/country code, not a 5-digit leading
-/// group), so this is a safe, narrow structural exclusion -- the same posture as the
-/// existing `looks_like_iso_date` shape check, not a blanket digit-count carve-out.
-fn looks_like_zip_plus4(matched: &[u8]) -> bool {
+/// match, **plus a "zip"/"postal" text marker** within a short lookback window (2026-07-22
+/// doubt-pass fix, Critical finding closed): shape alone cannot rule out some non-NANP
+/// phone formatting that happens to group 5-then-4 (Codex finding) -- the same
+/// conservative, context-gated posture as the ISBN-10 marker above and the git-SHA
+/// exclusion in `entropy.rs`. **Accepted residual:** a real 5-4-grouped phone number that
+/// happens to sit within 16 bytes of the literal word "zip"/"postal" in unrelated prose
+/// would still be excluded; narrower than the prior unconditional shape-only exclusion,
+/// not fixed further here.
+fn looks_like_zip_plus4(buf: &[u8], m_start: usize, matched: &[u8]) -> bool {
     let Ok(s) = std::str::from_utf8(matched) else {
         return false;
     };
@@ -169,10 +248,13 @@ fn looks_like_zip_plus4(matched: &[u8]) -> bool {
     let [first, second] = parts.as_slice() else {
         return false;
     };
-    first.len() == 5
+    let shape_matches = first.len() == 5
         && second.len() == 4
         && first.bytes().all(|b| b.is_ascii_digit())
-        && second.bytes().all(|b| b.is_ascii_digit())
+        && second.bytes().all(|b| b.is_ascii_digit());
+    shape_matches
+        && (preceded_by_marker_within(buf, m_start, 16, b"zip")
+            || preceded_by_marker_within(buf, m_start, 16, b"postal"))
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -193,7 +275,7 @@ impl Detector for PhoneDetector {
                 if !(MIN_DIGITS..=MAX_DIGITS).contains(&digit_count)
                     || !has_phone_marker(matched)
                     || looks_like_iso_date(matched)
-                    || looks_like_zip_plus4(matched)
+                    || looks_like_zip_plus4(buf, m.start(), matched)
                     || looks_like_isbn(buf, m.start(), m.end())
                 {
                     return None;
@@ -319,23 +401,77 @@ mod tests {
     }
 
     #[test]
-    fn ignores_an_isbn10() {
-        // The Wikipedia-canonical ISBN-10 checksum example.
-        let buf = b"catalog number 0-306-40615-2 recorded";
+    fn ignores_an_isbn10_when_labelled() {
+        // The Wikipedia-canonical ISBN-10 checksum example, now requiring the "isbn"
+        // marker (2026-07-22 doubt-pass fix, see the Critical finding below).
+        let buf = b"ISBN 0-306-40615-2 recorded";
         assert!(PhoneDetector.detect(buf, &[]).is_empty());
     }
 
     #[test]
+    fn still_flags_an_isbn10_checksum_collision_with_no_label() {
+        // 2026-07-22 doubt-pass Critical finding (single-model + Codex, independently,
+        // Codex's concrete counterexample): an ordinary NANP-shaped phone number can
+        // coincidentally satisfy the ISBN-10 mod-11 checksum. Without an "isbn" marker
+        // nearby, checksum alone must NOT exclude it -- this is the exact regression the
+        // marker requirement exists to close.
+        let buf = b"call 415-234-0002 now";
+        assert_eq!(
+            PhoneDetector.detect(buf, &[]).len(),
+            1,
+            "an unlabelled ISBN-10-checksum-colliding phone number must still be flagged"
+        );
+    }
+
+    #[test]
+    fn still_flags_a_5_4_grouped_number_near_gzip_not_the_standalone_word_zip() {
+        // Round-2 doubt-pass finding: a plain substring search for "zip" matched inside
+        // "gzip"/"unzip", which would wrongly exclude a real 5-4 grouped number sitting
+        // near either word. Must still be flagged with the word-boundary fix.
+        let buf = b"please gzip 12345-6789 before sending";
+        assert_eq!(
+            PhoneDetector.detect(buf, &[]).len(),
+            1,
+            "a number near \"gzip\" (not the standalone word \"zip\") must still be flagged"
+        );
+    }
+
+    #[test]
+    fn never_panics_or_hangs_on_a_long_digit_hyphen_run() {
+        // MAX_EXPAND bounds the cost of expand_to_digit_hyphen_run on an adversarial
+        // digit/hyphen-heavy buffer -- proves it completes (no panic, no pathological
+        // slowdown) rather than asserting a specific finding count.
+        let long_run: String = "1-".repeat(5000) + "2345678";
+        let buf = format!("prefix {long_run} suffix");
+        let _ = PhoneDetector.detect(buf.as_bytes(), &[]);
+    }
+
+    #[test]
     fn still_flags_a_10_digit_hyphenated_number_with_a_bad_isbn10_checksum() {
-        let buf = b"call 0-306-40615-9 now";
+        // Checksum fails regardless of the "ISBN" label being present -- the marker
+        // requirement only narrows a checksum PASS, it never substitutes for one.
+        let buf = b"ISBN 0-306-40615-9, call now";
         assert!(!PhoneDetector.detect(buf, &[]).is_empty());
     }
 
     #[test]
-    fn ignores_a_zip_plus_4() {
+    fn ignores_a_zip_plus_4_when_labelled() {
         assert!(PhoneDetector
             .detect(b"ship to zip 12345-6789 please", &[])
             .is_empty());
+    }
+
+    #[test]
+    fn still_flags_a_5_4_grouped_number_with_no_zip_or_postal_label() {
+        // 2026-07-22 doubt-pass Critical finding (Codex): a bare 5-4 digit grouping
+        // cannot be told apart from some non-NANP phone formatting by shape alone.
+        // Without a "zip"/"postal" marker nearby, must NOT be excluded.
+        let buf = b"reference 12345-6789 confirmed";
+        assert_eq!(
+            PhoneDetector.detect(buf, &[]).len(),
+            1,
+            "an unlabelled 5-4 grouped number must still be flagged"
+        );
     }
 
     #[test]

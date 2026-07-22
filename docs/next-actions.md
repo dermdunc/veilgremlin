@@ -22,19 +22,21 @@ demask logic, vault, detectors, pipeline, and tool-path masking are all validate
       friction). This is what turns the proven mechanism into a product that actually solves the
       governance/risk/privacy problem. The already-deferred "route masked request to Bedrock" /
       LiteLLM-gateway warm path. **#1 — nothing above it.**
-- [ ] **Precision NO-GO — fix implemented and verified GO locally; PENDING REVIEW, not
-      merged.** Branch `agent/claude/t10-fp-detector-fixes` implements the targeted fix
-      next-actions previously described (`EntropyDetector` git-SHA-context exclusion,
-      `PhoneDetector` ISBN-13/10 checksum + ZIP+4 shape exclusion) **plus a third residual
-      found while re-running the harness after those two**: `is_structured_identifier` now
-      splits on `=` too, closing a `LICENSE_KEY=ACME-2026-DEMO-KEY`-shaped false positive
-      (`docs/decisions.md`, 2026-07-21 entry has the full detail and the reasoning for each).
-      `cargo test --workspace` (all green), `clippy -D warnings`, `fmt --check` all pass.
+- [ ] **Precision NO-GO — fix implemented, TWO doubt-pass rounds run and closed, verified GO
+      locally; PENDING HUMAN REVIEW, not merged.** Branch `agent/claude/t10-fp-detector-fixes`
+      implements the targeted fix (`EntropyDetector` git-SHA-context exclusion,
+      `PhoneDetector` ISBN-13/10 checksum + ZIP+4 shape exclusion, `is_structured_identifier`
+      `=`-handling closing a `LICENSE_KEY=ACME-2026-DEMO-KEY`-shaped residual). Round 1
+      (single-model + Codex cross-model) found 8 real findings incl. 2 Critical false-negative
+      regressions; round 2 (single-model, targeted at round 1's own new code) found 6 more.
+      **All 14 closed, each with a regression test reproducing the reviewer's own
+      counterexample** — full detail in `docs/decisions.md` (2026-07-22 entries). `cargo test
+      --workspace` (all green), `clippy -D warnings`, `fmt --check` all pass after every round.
       **`vg bench` verdict: GO** — false-positive-rate is now **0.0%** (was 16.7%), all other
-      gates unchanged/PASS, hot-path p95 15.0 ms. **This does not ship on its own —
-      human review + this repo's usual doubt-pass discipline before merge, same as every
-      other T10-adjacent change** (see the many precedents in `docs/decisions.md`); the
-      masking-proxy milestone (#1 above) and the display-collision fix (below) are unrelated
+      gates unchanged/PASS. **This does not ship on its own — human review before merge, same
+      as every other T10-adjacent change** (see the many precedents in `docs/decisions.md`);
+      cross-model was offered again for round 2 (human's call whether a round 3 runs first);
+      the masking-proxy milestone (#1 above) and the display-collision fix (below) are unrelated
       and still open regardless of this gate's status.
 - [ ] **Fix the display-collision corruption** (1 of 3 mask→demask round-trips). Implement
       collision-avoiding minting at intern time (skip an ordinal whose display already occurs in

@@ -2201,3 +2201,96 @@ entropy/phone rounds, the T10 doubt-pass rounds 1-2) precisely because a privacy
 correctness has asymmetric stakes — a bad "fix" that quietly narrows detection is worse than
 the false positive it removes. This change should get the same treatment before it lands,
 not skip it because the harness result looks good.
+
+## 2026-07-22 - Doubt-driven-development round 1 (single-model + Codex cross-model) on the T10 fix: 8 findings, all closed
+
+**The instinct to skip a doubt pass because the harness result "looked clean" was checked, not
+acted on** — the previous entry above already named this risk explicitly; this entry is that
+check actually happening. Ran the full doubt-driven-development cycle: a fresh-context
+single-model adversarial review (ARTIFACT + CONTRACT only, no reasoning/decisions.md narrative
+passed in), then, on human request, a Codex cross-model second opinion via `codex exec
+--sandbox read-only`, prompt piped via stdin (never shell-interpolated). Both reviewed the same
+artifact independently and were reconciled together, not sequentially.
+
+**Two Critical findings, confirmed with concrete counterexamples, both closed:**
+- `is_structured_identifier`'s `=` split excluded a token whenever the VALUE side was a single
+  alphabetic run, even a genuinely high-entropy one (`TOKEN=zQvLmXpRwTuYbNdKfJhCsEoAiPlMnQr`,
+  4.71 bits/byte, was silently passing). **Fix:** the value must independently re-decompose
+  into >=2 further segments (renamed the original logic to `is_structured_segments`, reused for
+  both the whole-token check and the value-side check).
+- `looks_like_isbn10` had no prefix to narrow its mod-11 checksum, so ordinary NANP-shaped phone
+  numbers collide roughly 1-in-11 (Codex's concrete counterexample: `415-234-0002` passes the
+  checksum outright with a phone marker present and no ISBN shape). Codex independently escalated
+  the ZIP+4 shape-only exclusion (originally accepted here as a trade-off) to Critical for the
+  same reason — a bare `DDDDD-DDDD` shape can't rule out some non-NANP phone formatting. **Fix:**
+  both now additionally require an explicit text marker ("isbn" / "zip"/"postal") within a short
+  lookback window, mirroring the git-SHA exclusion's context-gated posture. ISBN-13 stays
+  checksum-only (its 978/979 prefix already narrows collisions to roughly 1-in-5000).
+
+**High findings, closed:** `sha1`/`sha256` context markers were dead code (the backward
+word-scan was alphabetic-only, so it stopped at the first digit and could never extract either
+marker — fixed to alphanumeric); `hash` was too generic, matching as the tail of common compound
+identifiers holding real sensitive values (`password_hash:`, `file_hash:` — removed from the
+marker list entirely); `commit=<sha>` never worked as documented because `=` is a token byte, so
+the entropy tokenizer never splits there in the first place, making the `=`-skip in the context
+scan unreachable dead code (removed, documented as an accepted scope limit rather than claimed
+to work).
+
+**Medium finding, closed:** `expand_to_digit_hyphen_run` was unbounded — O(n) per match with
+O(n) possible matches on an adversarial digit/hyphen-heavy buffer (O(n^2) risk on the 25ms p95
+hot path) and could merge two adjacent real values across a match boundary. **Fix:** bounded to
+`MAX_EXPAND = 24` bytes each direction (generous for any realistic 13-digit ISBN, narrow enough
+to bound the cost).
+
+**Every finding got a regression test reproducing the reviewer's own counterexample**, not just
+a narrative fix — `still_flags_a_bare_alphabetic_secret_after_an_equals_sign`,
+`still_flags_an_isbn10_checksum_collision_with_no_label` (using Codex's exact `415-234-0002`),
+`still_flags_a_5_4_grouped_number_with_no_zip_or_postal_label`,
+`sha1_and_sha256_context_words_now_actually_fire`,
+`still_flags_a_hex_secret_after_the_removed_hash_marker`. `cargo test --workspace`,
+`clippy -D warnings`, `fmt --check` all clean after every fix; `vg bench` re-run and reconfirmed
+**GO** (FP rate still 0.0%) after the full round.
+
+## 2026-07-22 - Doubt-driven-development round 2 (single-model, targeted at round 1's own fix code): 6 more findings, all closed
+
+**Not treated as done after round 1** — the new code round 1 introduced (the marker-window
+search, the bounded expansion, the restructured `=`-split logic) had not itself been doubted
+yet, so it was reviewed a second time, scoped narrowly to just that new code (not a full
+re-review of the whole file).
+
+**Findings, all closed:**
+- `is_structured_identifier`'s `=` fix only checked the VALUE side — a real secret sitting on
+  the KEY side with a benign-looking value (`<32-byte secret>=run-2026-01-01`) would have been
+  silently excluded, symmetric to the round-1 finding it was fixing. **Fix:** the key must also
+  be no longer than `MAX_ASSIGNMENT_KEY_LEN` (24 bytes) — real identifier names are short by
+  convention; a secret long enough to matter is not.
+- `preceded_by_marker_within` was a raw substring search — `zip` matched inside `gzip`/`unzip`,
+  which would wrongly exclude a real number sitting near either word. **Fix:** added
+  word-boundary checks (byte before/after the match must be absent or non-alphanumeric).
+  **Accepted, named residual:** "zip" as its own standalone word, used in an unrelated sense
+  ("extract the zip" near an unrelated ticket number), is not resolved by this — the marker
+  proves the word is present, not that it's being used in the postal-code sense.
+- `MAX_EXPAND` bounds cost but only shrinks, doesn't eliminate, cross-match merging of two
+  truly byte-adjacent real values into one coincidental ISBN-13 pass (ISBN-13 requires no text
+  marker). **Not fixed further** — closing it fully would mean bounding expansion by the
+  regex's own group structure rather than raw byte distance, a larger change; documented as an
+  accepted, named residual instead, narrower than the pre-MAX_EXPAND unbounded version.
+- `expand_to_digit_hyphen_run` didn't match `.`, asymmetric with the phone regex's own `[-. ]`
+  separator class (under-recognized dot-separated ISBNs). Cheap fix, no leak risk added.
+- `windows(0)` would panic on an empty marker — unreachable today (only static non-empty
+  literals are passed) but guarded defensively anyway.
+
+Regression tests added for each: `still_flags_a_secret_on_the_key_side_of_an_equals_sign`,
+`still_flags_a_5_4_grouped_number_near_gzip_not_the_standalone_word_zip`,
+`never_panics_or_hangs_on_a_long_digit_hyphen_run` (a 10,000+ byte adversarial digit/hyphen
+buffer, proving `MAX_EXPAND` bounds cost rather than asserting a specific finding count).
+`cargo test --workspace`, `clippy -D warnings`, `fmt --check` all clean; `vg bench` re-run and
+reconfirmed **GO** (FP rate still 0.0%) after this round too.
+
+**Where this stands:** two full doubt-driven-development cycles (round 1: single-model + Codex
+cross-model; round 2: single-model, targeted) — 14 findings total, all closed, each with its
+own regression test. Cross-model was offered again for round 2 per the doubt-driven-development
+skill's protocol (never skip the offer silently); human's call on whether a third round runs
+before merge. Still landed on `agent/claude/t10-fp-detector-fixes`, still **not merged** — the
+doubt passes closing clean is exactly what earns a merge decision, it doesn't substitute for the
+human review this repo's own precedent requires for every prior precision change.

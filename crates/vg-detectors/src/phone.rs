@@ -106,24 +106,34 @@ fn looks_like_iso_date(matched: &[u8]) -> bool {
 /// named residual -- the same posture this file takes elsewhere.
 const MAX_EXPAND: usize = 24;
 
-/// Expands a match's byte range to the contiguous run of digits/hyphens/dots in `buf`
+/// Expands a match's byte range to the contiguous run of digits/hyphens in `buf`
 /// (bounded by `MAX_EXPAND` each direction), walking left and right from the match
 /// bounds. The phone regex's per-group digit cap (`{2,4}`) can split a longer structured
 /// number -- an ISBN-13's `978-3-16-148410-0` matches this detector's pattern only as
 /// the inner fragment `3-16-148410`, starting and ending mid-number -- so checksum
-/// validation needs the WHOLE number, not just the regex's own match span. Matches `.` as
-/// well as `-` (round-2 doubt-pass finding: the original digit/hyphen-only set was
-/// asymmetric with the phone regex's own `[-. ]` separator class, under-recognizing a
-/// dot-separated ISBN like `978.3.16.148410.0`).
+/// validation needs the WHOLE number, not just the regex's own match span.
+///
+/// **Round-2 doubt-pass fix, reverted in round 3 (Codex finding): does NOT match `.`.**
+/// A round-2 fix added `.` to match the phone regex's own `[-. ]` separator class and
+/// catch dot-separated ISBNs, but Codex showed this meaningfully widens the ISBN-13
+/// cross-match-merge residual documented above -- dotted content (version strings,
+/// decimals, IP-like patterns) is far more common than hyphenated content, and ISBN-13
+/// requires no text marker, so a real dotted phone-like value merging with adjacent
+/// dotted digits into a valid ISBN-13 checksum is a realistic leak, not a contrived one
+/// (`978.316.1484.100` collects the canonical valid ISBN-13 digit sequence). The
+/// precision gain (recognizing dot-separated ISBNs, a real but much less common
+/// formatting choice per ISO 2108, which is predominantly hyphenated) was not worth that
+/// false-negative surface. Reverted to digit/hyphen-only; dot-separated ISBNs remain a
+/// named, accepted residual.
 fn expand_to_digit_hyphen_run(buf: &[u8], start: usize, end: usize) -> (usize, usize) {
     let mut s = start;
     let floor = start.saturating_sub(MAX_EXPAND);
-    while s > floor && matches!(buf[s - 1], b'0'..=b'9' | b'-' | b'.') {
+    while s > floor && matches!(buf[s - 1], b'0'..=b'9' | b'-') {
         s -= 1;
     }
     let mut e = end;
     let ceil = (end + MAX_EXPAND).min(buf.len());
-    while e < ceil && matches!(buf[e], b'0'..=b'9' | b'-' | b'.') {
+    while e < ceil && matches!(buf[e], b'0'..=b'9' | b'-') {
         e += 1;
     }
     (s, e)
@@ -138,30 +148,40 @@ fn expand_to_digit_hyphen_run(buf: &[u8], start: usize, end: usize) -> (usize, u
 /// independently -- Codex's concrete counterexample: `415-234-0002`, an ordinary
 /// NANP-shaped number, passes the ISBN-10 checksum outright).
 ///
-/// **Word-boundary checked (round-2 doubt-pass finding, closed):** a plain substring
-/// search matched `zip` inside `gzip`/`unzip`, which would wrongly exclude a real 5-4
-/// grouped number sitting near either word. Requires the byte immediately before and
-/// after the match to be absent or non-alphanumeric. **Accepted residual, not fixed:**
-/// `zip` as its own standalone word can still be present for an unrelated reason (e.g.
-/// "extract the zip" before an unrelated ticket number) -- the marker proves the word is
-/// present, not that it is being used in the postal-code sense; the same class of
-/// ambiguity a human skimming the same text would also have.
+/// **Word-boundary checked (round-2 doubt-pass finding, closed; round-3 Codex finding
+/// closed a gap in that fix).** A plain substring search matched `zip` inside
+/// `gzip`/`unzip`. The round-2 fix added boundary checks, but checked them against the
+/// *truncated search window slice*, not the real buffer -- a match sitting exactly at
+/// the window's start or end edge was treated as automatically boundary-OK regardless of
+/// what byte actually sat just outside the window in the real buffer, so
+/// `zip12345-6789` (marker glued directly onto the digits, zero separator) could still
+/// pass. **Fix:** boundary bytes are now read from the full `buf` at absolute indices,
+/// not the windowed slice, so a marker's true neighbours are always checked, however the
+/// window happened to truncate. Also **treats `_` as a word-forming character, not a
+/// boundary** (round-3 Codex finding): `zip_code`/`not_zip`/`customer_isbn` no longer
+/// count as containing the standalone word, matching how `_` is already treated as an
+/// identifier-forming character throughout the rest of this codebase. **Accepted
+/// residual, not fixed:** `zip` as its own standalone word can still be present for an
+/// unrelated reason (e.g. "extract the zip" before an unrelated ticket number) -- the
+/// marker proves the word is present, not that it is being used in the postal-code
+/// sense; the same class of ambiguity a human skimming the same text would also have.
 fn preceded_by_marker_within(buf: &[u8], pos: usize, window: usize, marker: &[u8]) -> bool {
-    if marker.is_empty() {
+    if marker.is_empty() || marker.len() > pos {
         return false;
     }
-    let start = pos.saturating_sub(window);
-    let haystack = &buf[start..pos];
-    if marker.len() > haystack.len() {
+    let win_start = pos.saturating_sub(window);
+    let last_start = pos - marker.len();
+    if last_start < win_start {
         return false;
     }
-    haystack.windows(marker.len()).enumerate().any(|(i, w)| {
-        if !w.eq_ignore_ascii_case(marker) {
+    let is_word_byte = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
+    (win_start..=last_start).any(|i| {
+        if !buf[i..i + marker.len()].eq_ignore_ascii_case(marker) {
             return false;
         }
-        let left_ok = i == 0 || !haystack[i - 1].is_ascii_alphanumeric();
+        let left_ok = i == 0 || !is_word_byte(buf[i - 1]);
         let right_idx = i + marker.len();
-        let right_ok = right_idx >= haystack.len() || !haystack[right_idx].is_ascii_alphanumeric();
+        let right_ok = right_idx >= buf.len() || !is_word_byte(buf[right_idx]);
         left_ok && right_ok
     })
 }
@@ -444,6 +464,64 @@ mod tests {
         let long_run: String = "1-".repeat(5000) + "2345678";
         let buf = format!("prefix {long_run} suffix");
         let _ = PhoneDetector.detect(buf.as_bytes(), &[]);
+    }
+
+    #[test]
+    fn expand_to_digit_hyphen_run_is_bounded_by_max_expand() {
+        // Round-3 doubt-pass finding (Codex): the prior long-run test only proved "does
+        // not panic," not that MAX_EXPAND actually bounds the walk. Direct test: a
+        // contiguous digit/hyphen run much longer than MAX_EXPAND on both sides of a
+        // one-byte "match" in the middle -- expansion must stop at the bound in each
+        // direction, not walk the whole run.
+        let long_run = "9".repeat(100);
+        let buf = format!("{long_run}-{long_run}");
+        let mid = long_run.len() + 1;
+        let (s, e) = expand_to_digit_hyphen_run(buf.as_bytes(), mid, mid + 1);
+        assert_eq!(
+            mid - s,
+            MAX_EXPAND,
+            "left expansion did not stop at MAX_EXPAND"
+        );
+        assert_eq!(
+            e - (mid + 1),
+            MAX_EXPAND,
+            "right expansion did not stop at MAX_EXPAND"
+        );
+    }
+
+    #[test]
+    fn still_flags_a_number_with_a_marker_glued_directly_onto_it() {
+        // Round-3 doubt-pass finding (Codex): the round-2 boundary check validated
+        // boundaries against the TRUNCATED search-window slice, not the real buffer, so
+        // a marker sitting exactly at the window edge was treated as boundary-OK
+        // regardless of the actual adjacent byte. `zip12345-6789` glues "zip" directly
+        // onto the digits with zero separator -- not a real word boundary -- and must
+        // still be flagged.
+        let buf = b"zip12345-6789 recorded";
+        assert_eq!(
+            PhoneDetector.detect(buf, &[]).len(),
+            1,
+            "a marker glued directly onto the digits with no separator must still be flagged"
+        );
+    }
+
+    #[test]
+    fn still_flags_numbers_near_compound_identifiers_containing_the_marker() {
+        // Round-3 doubt-pass finding (Codex): `_` was not treated as a word-forming
+        // character, so "zip_code"/"customer_isbn" wrongly counted as containing the
+        // standalone marker word.
+        assert_eq!(
+            PhoneDetector.detect(b"zip_code 12345-6789", &[]).len(),
+            1,
+            "\"zip_code\" must not be treated as containing the standalone word \"zip\""
+        );
+        assert_eq!(
+            PhoneDetector
+                .detect(b"customer_isbn 415-234-0002", &[])
+                .len(),
+            1,
+            "\"customer_isbn\" must not be treated as containing the standalone word \"isbn\""
+        );
     }
 
     #[test]

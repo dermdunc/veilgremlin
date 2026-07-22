@@ -2287,10 +2287,66 @@ buffer, proving `MAX_EXPAND` bounds cost rather than asserting a specific findin
 `cargo test --workspace`, `clippy -D warnings`, `fmt --check` all clean; `vg bench` re-run and
 reconfirmed **GO** (FP rate still 0.0%) after this round too.
 
-**Where this stands:** two full doubt-driven-development cycles (round 1: single-model + Codex
-cross-model; round 2: single-model, targeted) — 14 findings total, all closed, each with its
-own regression test. Cross-model was offered again for round 2 per the doubt-driven-development
-skill's protocol (never skip the offer silently); human's call on whether a third round runs
-before merge. Still landed on `agent/claude/t10-fp-detector-fixes`, still **not merged** — the
-doubt passes closing clean is exactly what earns a merge decision, it doesn't substitute for the
-human review this repo's own precedent requires for every prior precision change.
+**Where this stood after round 2:** human was asked whether to stop, run Codex on round 2's own
+fixes, or merge as-is — chose the Codex round. That decision paid for itself immediately.
+
+## 2026-07-22 - Doubt-driven-development round 3 (Codex cross-model, targeted at round 2's own fix code): 8 more findings, including one that undermined round 2's own fix
+
+**Targeted, not a full re-review:** Codex reviewed only the new code round 2 introduced
+(`MAX_ASSIGNMENT_KEY_LEN` in `entropy.rs`; `preceded_by_marker_within`'s word-boundary logic and
+`expand_to_digit_hyphen_run`'s `.`-matching in `phone.rs`).
+
+**The sharpest finding: round 2's own fix for the key-side gap was itself insufficient.**
+`MAX_ASSIGNMENT_KEY_LEN = 24` was meant to stop a real secret from passing as the KEY side of a
+`KEY=VALUE` assignment — but a flat length bound can't distinguish a secret from a name. A
+realistic 20-24 byte high-entropy secret (`aB3dE5fG7hI9jK1lM2nP=run-2026-01-01`, right at
+`DEFAULT_MIN_LENGTH`) still passed the cap while looking nothing like a real identifier — Codex
+computed its entropy (4.53 bits/byte) to confirm it was a plausible real secret, not a contrived
+edge case. **Fix:** replaced the length cap with the same rule already applied everywhere else in
+this file — the KEY must independently satisfy `is_structured_segments` too, not just be short.
+`LICENSE_KEY`/`API_KEY`/`AWS_SECRET_ACCESS_KEY` all decompose into >=2 word-like segments and
+still pass; a bare high-entropy run has no internal delimiter and fails, by construction, not by
+a threshold that has to be re-guessed. Accepted precision cost: a single-word key with no
+delimiter (`TOKEN=<benign-value>`) no longer qualifies either — over-masking, not under-masking.
+
+**Two more High findings, both closed:**
+- The round-2 word-boundary fix for `preceded_by_marker_within` checked boundaries against the
+  *truncated search-window slice*, not the real buffer — a marker sitting exactly at the
+  window's start or end edge was treated as automatically boundary-OK regardless of what byte
+  actually sat just outside the window. Concretely, `zip12345-6789` (marker glued directly onto
+  the digits, zero separator) could still pass as if word-bounded. **Fix:** boundary bytes are
+  now read from the full buffer at absolute indices, not the windowed slice.
+- `.` was added to `expand_to_digit_hyphen_run` in round 2 to catch dot-separated ISBNs (a
+  precision improvement), but Codex showed this meaningfully widened the ISBN-13 cross-match-merge
+  residual round 2 had already named and accepted as narrow — dotted content (version strings,
+  decimals, IP-like patterns) is far more common than hyphenated content, and ISBN-13 requires no
+  text marker, so a real dotted phone-like value merging with adjacent digits into a valid ISBN-13
+  checksum (`978.316.1484.100` collects the canonical valid ISBN-13 sequence) is realistic, not
+  contrived. **Fix: reverted the `.` addition entirely.** The precision gain (recognizing a real
+  but far less common formatting choice — ISO 2108 is predominantly hyphenated) wasn't worth
+  widening a false-negative surface; dot-separated ISBNs remain a named, accepted residual.
+
+**Two Medium findings, closed:** `_` was not treated as a word-forming character in the boundary
+check, so `zip_code`/`customer_isbn` wrongly counted as containing the standalone marker word
+(fixed: `_` now counts alongside alphanumerics); the long-digit-run performance test only proved
+"does not panic," not that `MAX_EXPAND` actually bounds the walk (added a direct test on
+`expand_to_digit_hyphen_run` itself asserting the exact bound).
+
+**Every finding again got a regression test reproducing the reviewer's own counterexample:**
+`still_flags_a_short_high_entropy_key_side_secret`, `ignores_a_multi_segment_key_and_value_assignment`,
+`still_flags_a_number_with_a_marker_glued_directly_onto_it`,
+`still_flags_numbers_near_compound_identifiers_containing_the_marker`,
+`expand_to_digit_hyphen_run_is_bounded_by_max_expand`. `cargo test --workspace` (71
+vg-detectors tests, up from 66), `clippy -D warnings`, `fmt --check` all clean; `vg bench`
+re-run and reconfirmed **GO** (FP rate still 0.0%) after this round too.
+
+**Where this stands:** three full doubt-driven-development rounds (round 1: single-model +
+Codex cross-model; round 2: single-model, targeted; round 3: Codex cross-model, targeted) — 22
+findings total, all closed, each with its own regression test. Round 3 is itself the concrete
+answer to "is this worth another round" — it found a real bug in round 2's own fix, not noise,
+which is exactly the STOP-condition test the doubt-driven-development skill names ("stop when
+the next cycle returns only trivial findings"). This one didn't. Still landed on
+`agent/claude/t10-fp-detector-fixes`, still **not merged** — human review is next; whether a
+round 4 runs is the human's call, but three consecutive rounds each surfacing real, non-trivial
+findings is itself informative about how much confidence a "vg bench says GO" result alone
+should carry for this class of change.

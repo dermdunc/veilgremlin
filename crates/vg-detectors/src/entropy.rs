@@ -119,19 +119,28 @@ fn is_token_byte(b: u8) -> bool {
 /// `xKrTqYbWmZjLpNsFhDvGc` does not (no further segments, `segments.len() < 2` in
 /// `is_structured_segments`, same guard that already protects the general case).
 ///
-/// **Round-2 doubt-pass finding, closed: the key side needed a bound too.** The key was
+/// **Round-2 doubt-pass finding: the key side needed a bound too.** The key was
 /// originally left unchecked on the theory that it's "almost always a benign identifier
 /// in practice" -- but that's an assumption, not a guarantee, and the shape is
 /// symmetric: `zQ3v9Lm2Xp7RwT6uYbN8dKfJhC1sEoAi=run-2026-01-01` has the real secret on
-/// the KEY side and a benign-looking VALUE side, and the value-only check would have
-/// waved it through. **Fix:** the key must also be no longer than
-/// `MAX_ASSIGNMENT_KEY_LEN` -- real identifier/env-var names are short by convention
-/// (`AWS_SECRET_ACCESS_KEY` is 21 bytes; `LICENSE_KEY` is 11), while a secret long enough
-/// to trigger this detector is bounded below by `DEFAULT_MIN_LENGTH` (20) minus the
-/// `=value` portion, so a plausible attacker-shaped "secret as key" is excluded by
-/// length alone without penalizing real short key names.
-const MAX_ASSIGNMENT_KEY_LEN: usize = 24;
-
+/// the KEY side and a benign-looking VALUE side, and a value-only check would have
+/// waved it through.
+///
+/// **Round-3 doubt-pass finding, closed: the round-2 length-cap fix was itself
+/// insufficient.** A flat `key.len() <= 24` bound still let a realistic 20-24 byte
+/// high-entropy secret through as a "key" -- `aB3dE5fG7hI9jK1lM2nP=run-2026-01-01` (a
+/// 20-byte key, right at `DEFAULT_MIN_LENGTH`) passed the cap while looking nothing like
+/// a real identifier. Length alone cannot distinguish a secret from a name. **Fix:**
+/// require the KEY to independently satisfy `is_structured_segments` too -- the exact
+/// same rule already applied to the value and to everything else in this file, not a new
+/// one. `LICENSE_KEY`/`API_KEY`/`AWS_SECRET_ACCESS_KEY` all decompose into >=2
+/// word-like segments and pass; a bare high-entropy run like
+/// `aB3dE5fG7hI9jK1lM2nP` or `zQ3v9Lm2Xp7RwT6uYbN8dKfJhC1sEoAi` has no internal
+/// delimiter, is exactly 1 segment, and fails -- by construction, not by a threshold that
+/// has to be guessed and re-guessed. **Accepted precision cost, not a leak risk:** a
+/// single-word key with no delimiter (`TOKEN=<benign-structured-value>`,
+/// `KEY=<benign-structured-value>`) no longer qualifies for this exclusion either, since
+/// the key alone doesn't decompose -- over-masking in that narrow case, not under-masking.
 fn is_structured_identifier(token: &[u8]) -> bool {
     let Ok(s) = std::str::from_utf8(token) else {
         return false;
@@ -140,7 +149,10 @@ fn is_structured_identifier(token: &[u8]) -> bool {
         return true;
     }
     if let Some((key, value)) = s.split_once('=') {
-        if !value.is_empty() && key.len() <= MAX_ASSIGNMENT_KEY_LEN && is_structured_segments(value)
+        if !key.is_empty()
+            && !value.is_empty()
+            && is_structured_segments(key)
+            && is_structured_segments(value)
         {
             return true;
         }
@@ -495,14 +507,36 @@ mod tests {
     fn still_flags_a_secret_on_the_key_side_of_an_equals_sign() {
         // Round-2 doubt-pass finding: the `=` fix only checked the VALUE side, so a real
         // secret sitting on the KEY side with a benign-looking value would have been
-        // silently excluded. The key here is 32 bytes, well past
-        // MAX_ASSIGNMENT_KEY_LEN (24), so it must still be flagged.
+        // silently excluded.
         let buf = b"zQ3v9Lm2Xp7RwT6uYbN8dKfJhC1sEoAi=run-2026-01-01";
         assert_eq!(
             EntropyDetector::default().detect(buf, &[]).len(),
             1,
             "a real secret on the key side of `=` must still be flagged"
         );
+    }
+
+    #[test]
+    fn still_flags_a_short_high_entropy_key_side_secret() {
+        // Round-3 doubt-pass finding (Codex): the round-2 length-cap fix (key.len() <=
+        // 24) still let a realistic 20-24 byte secret through as a "key" -- a flat
+        // length bound can't distinguish a secret from a name. This 20-byte key would
+        // have passed the old cap; the current fix (key must independently decompose
+        // via is_structured_segments) rejects it because it has no internal delimiter.
+        let buf = b"aB3dE5fG7hI9jK1lM2nP=run-2026-01-01";
+        assert_eq!(
+            EntropyDetector::default().detect(buf, &[]).len(),
+            1,
+            "a 20-byte high-entropy key with no internal delimiter must still be flagged"
+        );
+    }
+
+    #[test]
+    fn ignores_a_multi_segment_key_and_value_assignment() {
+        // Confirms the symmetric fix still catches the real target case: both sides
+        // decompose into >=2 word-like segments, same as a real AWS-style env var name.
+        let buf = b"AWS_SECRET_ACCESS_KEY=demo-placeholder-value";
+        assert!(EntropyDetector::default().detect(buf, &[]).is_empty());
     }
 
     #[test]

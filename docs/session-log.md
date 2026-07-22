@@ -1156,3 +1156,37 @@ clean. `fmt --check`: clean. `vg bench`: GO, FP rate 0.0%, unchanged from before
 
 ### Mind-palace updated
 - No (vault mutation not authorised).
+
+## Session: Doubt-driven-development round 3 (Codex) — found a bug in round 2's own fix
+
+**Date:** 2026-07-22
+
+Human, asked to choose between stopping, running Codex on round 2's fixes, or merging as-is,
+chose the Codex round. It found 8 more issues, including the sharpest one yet: round 2's own
+fix for the key-side `=` gap (`MAX_ASSIGNMENT_KEY_LEN = 24`) was itself insufficient — a flat
+length bound couldn't distinguish a real 20-24 byte secret from a real identifier name
+(Codex's counterexample: `aB3dE5fG7hI9jK1lM2nP=run-2026-01-01`, entropy 4.53 bits/byte).
+Replaced with the same structural check already used everywhere else in the file (key must
+also decompose into >=2 word-like segments), closing it by construction rather than a
+threshold that needed re-guessing. Also found the round-2 word-boundary fix checked
+boundaries against the truncated search-window slice rather than the real buffer (a marker
+glued directly onto digits with zero separator could still pass), and that round 2's `.`
+addition to the expansion helper — meant as a precision improvement for dot-separated ISBNs —
+meaningfully widened the ISBN-13 cross-match-merge residual round 2 had already accepted as
+narrow; reverted rather than patched further, since the precision gain wasn't worth the
+widened false-negative surface. Full detail and reasoning per finding in `docs/decisions.md`.
+
+Every finding across all three rounds (22 total) has a regression test reproducing the
+reviewer's own counterexample. `vg bench` reconfirmed GO (FP 0.0%) after this round too. Still
+on `agent/claude/t10-fp-detector-fixes`, still not merged. Three consecutive rounds each
+surfacing real, non-trivial findings — round 3 targeted at round 2's own fix code and still
+found a genuine regression in it — is itself informative about how much a clean `vg bench`
+result alone should be trusted for this class of change; recorded plainly rather than treated
+as a reason to stop looking.
+
+### Validation
+`cargo test --workspace`: all green (71 vg-detectors tests, up from 66). `clippy -D warnings`:
+clean. `fmt --check`: clean. `vg bench`: GO, FP rate 0.0%, unchanged.
+
+### Mind-palace updated
+- No (vault mutation not authorised).
